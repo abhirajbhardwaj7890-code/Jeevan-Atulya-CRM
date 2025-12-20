@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { AppSettings, Member, AccountType, Account, AccountStatus } from '../types';
-import { createAccount, upsertMember, upsertAccount, upsertTransaction } from '../services/data';
+import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions } from '../services/data';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
