@@ -224,6 +224,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         if (previewData.length === 0) return;
         setIsImporting(true);
         let count = 0;
+        let failCount = 0;
 
         try {
             // Process in BATCHES for speed (Parallelism)
@@ -234,54 +235,59 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 const batch = rows.slice(i, i + BATCH_SIZE);
 
                 await Promise.all(batch.map(async (row) => {
-                    if (importType === 'members') {
-                        const phone = row.phone || row.phonenumber || "";
-                        const fullName = row.full_name || row.fullname || row.name || "Unknown Member";
-                        const legacyId = row.member_id || row.legacyid || row.id;
-                        const joinDate = normalizeDate(row.join_date || row.joindate);
+                    try {
+                        if (importType === 'members') {
+                            const phone = row.phone || row.phonenumber || "";
+                            const fullName = row.full_name || row.fullname || row.name || "Unknown Member";
+                            const legacyId = row.member_id || row.legacyid || row.id;
+                            const joinDate = normalizeDate(row.join_date || row.joindate);
 
-                        const newMember: Member = {
-                            id: legacyId ? String(legacyId) : `MEM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                            fullName: fullName,
-                            phone: String(phone),
-                            email: row.email || "",
-                            fatherName: row.father_name || row.fathername || "",
-                            currentAddress: row.current_address || row.address || "",
-                            permanentAddress: row.current_address || row.address || "",
-                            joinDate: joinDate,
-                            status: 'Active',
-                            avatarUrl: `https://ui-avatars.com/api/?name=${fullName.replace(' ', '+')}`,
-                            riskScore: 0
-                        };
-                        await upsertMember(newMember);
-                    } else {
-                        let type = AccountType.OPTIONAL_DEPOSIT;
-                        const inputType = (row.account_type || row.accounttype || row.type || '').toLowerCase();
+                            const newMember: Member = {
+                                id: legacyId ? String(legacyId) : `MEM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                                fullName: fullName,
+                                phone: String(phone),
+                                email: row.email || "",
+                                fatherName: row.father_name || row.fathername || "",
+                                currentAddress: row.current_address || row.address || "",
+                                permanentAddress: row.current_address || row.address || "",
+                                joinDate: joinDate,
+                                status: 'Active',
+                                avatarUrl: `https://ui-avatars.com/api/?name=${fullName.replace(' ', '+')}`,
+                                riskScore: 0
+                            };
+                            await upsertMember(newMember);
+                        } else {
+                            let type = AccountType.OPTIONAL_DEPOSIT;
+                            const inputType = (row.account_type || row.accounttype || row.type || '').toLowerCase();
 
-                        if (inputType.includes('share')) type = AccountType.SHARE_CAPITAL;
-                        else if (inputType.includes('compulsory')) type = AccountType.COMPULSORY_DEPOSIT;
-                        else if (inputType.includes('fixed')) type = AccountType.FIXED_DEPOSIT;
-                        else if (inputType.includes('recurring')) type = AccountType.RECURRING_DEPOSIT;
-                        else if (inputType.includes('loan')) type = AccountType.LOAN;
+                            if (inputType.includes('share')) type = AccountType.SHARE_CAPITAL;
+                            else if (inputType.includes('compulsory')) type = AccountType.COMPULSORY_DEPOSIT;
+                            else if (inputType.includes('fixed')) type = AccountType.FIXED_DEPOSIT;
+                            else if (inputType.includes('recurring')) type = AccountType.RECURRING_DEPOSIT;
+                            else if (inputType.includes('loan')) type = AccountType.LOAN;
 
-                        const balValue = row.opening_balance || row.openingbalance || row.balance || row.amount || '0';
-                        const balance = parseFloat(String(balValue));
-                        const linkedMemberId = row.member_id || row.memberid || row._linkedMemberId;
+                            const balValue = row.opening_balance || row.openingbalance || row.balance || row.amount || '0';
+                            const balance = parseFloat(String(balValue));
+                            const linkedMemberId = row.member_id || row.memberid || row._linkedMemberId;
 
-                        if (linkedMemberId) {
-                            const newAcc = createAccount(linkedMemberId, type, balance, undefined, undefined, settings);
-                            const openDate = normalizeDate(row.opening_date || row.openingdate || row.opendate || row.date);
+                            if (linkedMemberId) {
+                                const newAcc = createAccount(linkedMemberId, type, balance, undefined, undefined, settings);
+                                const openDate = normalizeDate(row.opening_date || row.openingdate || row.opendate || row.date);
 
-                            if (openDate && newAcc.transactions.length > 0) {
-                                newAcc.transactions[0].date = openDate;
-                                newAcc.transactions[0].description = "Opening Balance (Imported)";
+                                if (openDate && newAcc.transactions.length > 0) {
+                                    newAcc.transactions[0].date = openDate;
+                                    newAcc.transactions[0].description = "Opening Balance (Imported)";
+                                }
+
+                                await upsertAccount(newAcc);
+                                await upsertTransaction(newAcc.transactions[0], newAcc.id);
                             }
-
-                            await upsertAccount(newAcc);
-                            await upsertTransaction(newAcc.transactions[0], newAcc.id);
                         }
+                        count++;
+                    } catch (err: any) {
+                        console.error(`Row Import Failed: ${row.full_name || row.member_id}`, err);
+                        failCount++;
                     }
-                    count++;
                 }));
             }
 
@@ -290,10 +296,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
             setPage(1);
             setValidationErrors([]);
             if (onImportSuccess) onImportSuccess();
-            alert(`Successfully imported ${count} records!`);
+
+            if (failCount > 0) {
+                alert(`Import finished: ${count} successful, ${failCount} failed. Check browser console for database errors!`);
+            } else {
+                alert(`Successfully imported ${count} records!`);
+            }
         } catch (err) {
             console.error(err);
-            alert("Import failed partially. Check console.");
+            alert("Critical error during import procedure. Check console.");
         } finally {
             setIsImporting(false);
         }

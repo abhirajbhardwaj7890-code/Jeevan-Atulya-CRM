@@ -73,14 +73,14 @@ const mapMemberToDB = (m: Member) => ({
     father_name: m.fatherName,
     email: m.email,
     phone: m.phone,
-    address: m.currentAddress, // Keep legacy field populated with current address
+    address: m.currentAddress,
     permanent_address: m.permanentAddress,
     current_address: m.currentAddress,
     city: m.city,
     pin_code: m.pinCode,
     residence_type: m.residenceType,
     join_date: m.joinDate,
-    date_of_birth: m.dateOfBirth || null, // Convert empty string to null for Postgres Date type
+    date_of_birth: m.dateOfBirth || null,
     status: m.status,
     risk_score: m.riskScore ?? 0,
     branch_id: m.branchId ?? null,
@@ -416,20 +416,12 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
 
         // Merge Settings
         const settings = { ...DEFAULT_SETTINGS };
-        (settingsRes.data || []).forEach((item: any) => {
-            if (item.key === 'interest_rate_optional_deposit') settings.interestRates.optionalDeposit = Number(item.value);
-            else if (item.key === 'interest_rate_fixed_deposit') settings.interestRates.fixedDeposit = Number(item.value);
-            else if (item.key === 'interest_rate_recurring_deposit') settings.interestRates.recurringDeposit = Number(item.value);
-            else if (item.key === 'interest_rate_compulsory_deposit') settings.interestRates.compulsoryDeposit = Number(item.value);
-            else if (item.key === 'interest_rate_home_loan') settings.interestRates.loan.home = Number(item.value);
-            else if (item.key === 'interest_rate_personal_loan') settings.interestRates.loan.personal = Number(item.value);
-            else if (item.key === 'interest_rate_gold_loan') settings.interestRates.loan.gold = Number(item.value);
-            else if (item.key === 'interest_rate_agriculture_loan') settings.interestRates.loan.agriculture = Number(item.value);
-            else if (item.key === 'interest_rate_vehicle_loan') settings.interestRates.loan.vehicle = Number(item.value);
-            else if (item.key === 'interest_rate_emergency_loan') settings.interestRates.loan.emergency = Number(item.value);
-            else if (item.key === 'default_agent_fee') settings.defaultAgentFee = Number(item.value); // Changed
-            else if (item.key === 'late_payment_fine') settings.latePaymentFine = Number(item.value);
-            else if (item.key === 'grace_period_days') settings.gracePeriodDays = Number(item.value);
+        (settingsRes.data || []).forEach((row: any) => {
+            const val = row.value;
+            if (row.key === 'interest_rates') { try { settings.interestRates = JSON.parse(val); } catch (e) { } }
+            else if (row.key === 'late_payment_fine') settings.latePaymentFine = Number(val);
+            else if (row.key === 'grace_period_days') settings.gracePeriodDays = Number(val);
+            else if (row.key === 'default_agent_fee') settings.defaultAgentFee = Number(val);
         });
 
         return { members, accounts, interactions, settings, ledger, branches, agents };
@@ -543,21 +535,11 @@ export const saveSettings = async (settings: AppSettings) => {
     }
     const supabase = getSupabaseClient();
 
-    // Transform settings object back to rows
     const updates = [
-        { key: 'interest_rate_optional_deposit', value: settings.interestRates.optionalDeposit },
-        { key: 'interest_rate_fixed_deposit', value: settings.interestRates.fixedDeposit },
-        { key: 'interest_rate_recurring_deposit', value: settings.interestRates.recurringDeposit },
-        { key: 'interest_rate_compulsory_deposit', value: settings.interestRates.compulsoryDeposit },
-        { key: 'interest_rate_home_loan', value: settings.interestRates.loan.home },
-        { key: 'interest_rate_personal_loan', value: settings.interestRates.loan.personal },
-        { key: 'interest_rate_gold_loan', value: settings.interestRates.loan.gold },
-        { key: 'interest_rate_agriculture_loan', value: settings.interestRates.loan.agriculture },
-        { key: 'interest_rate_vehicle_loan', value: settings.interestRates.loan.vehicle },
-        { key: 'interest_rate_emergency_loan', value: settings.interestRates.loan.emergency },
-        { key: 'default_agent_fee', value: settings.defaultAgentFee },
-        { key: 'late_payment_fine', value: settings.latePaymentFine },
-        { key: 'grace_period_days', value: settings.gracePeriodDays },
+        { key: 'late_payment_fine', value: String(settings.latePaymentFine) },
+        { key: 'grace_period_days', value: String(settings.gracePeriodDays) },
+        { key: 'interest_rates', value: JSON.stringify(settings.interestRates) },
+        { key: 'default_agent_fee', value: String(settings.defaultAgentFee) }
     ];
 
     const { error } = await supabase.from('settings').upsert(updates, { onConflict: 'key' });
