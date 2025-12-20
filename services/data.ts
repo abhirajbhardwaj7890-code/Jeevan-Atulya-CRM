@@ -2,23 +2,23 @@ import { Member, Account, AccountType, AccountStatus, Interaction, LoanType, Bra
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  latePaymentFine: 500,
-  gracePeriodDays: 30,
-  defaultAgentFee: 500, // Default 500 Rs per member
-  interestRates: {
-    optionalDeposit: 3.5,
-    fixedDeposit: 6.8,
-    recurringDeposit: 6.5,
-    compulsoryDeposit: 4.0,
-    loan: {
-      home: 8.5,
-      personal: 12.0,
-      gold: 9.0,
-      agriculture: 7.0,
-      vehicle: 10.0,
-      emergency: 14.0
+    latePaymentFine: 500,
+    gracePeriodDays: 30,
+    defaultAgentFee: 500, // Default 500 Rs per member
+    interestRates: {
+        optionalDeposit: 3.5,
+        fixedDeposit: 6.8,
+        recurringDeposit: 6.5,
+        compulsoryDeposit: 4.0,
+        loan: {
+            home: 8.5,
+            personal: 12.0,
+            gold: 9.0,
+            agriculture: 7.0,
+            vehicle: 10.0,
+            emergency: 14.0
+        }
     }
-  }
 };
 
 export const MOCK_BRANCHES: Branch[] = [
@@ -45,7 +45,7 @@ const mapMemberFromDB = (m: any): Member => ({
     email: m.email,
     phone: m.phone,
     permanentAddress: m.permanent_address || m.address, // Fallback to old address field if migration pending
-    currentAddress: m.current_address || m.address, 
+    currentAddress: m.current_address || m.address,
     city: m.city,
     pinCode: m.pin_code,
     residenceType: m.residence_type,
@@ -214,7 +214,7 @@ const mapAgentFromDB = (a: any): Agent => ({
     branchId: a.branch_id,
     phone: a.phone,
     commissionFee: a.commission_fee ? Number(a.commission_fee) : undefined, // Changed
-    activeMembers: 0, 
+    activeMembers: 0,
     totalCollections: 0,
     status: a.status
 });
@@ -246,326 +246,303 @@ const mapTransactionToDB = (t: Transaction, accountId: string) => ({
 // --- Helper Functions ---
 
 export const createAccount = (
-    memberId: string, 
-    type: AccountType, 
-    balance: number = 0, 
-    loanType?: LoanType, 
-    extra?: { 
-        odLimit?: number, 
-        rdFrequency?: 'Monthly' | 'Daily', 
+    memberId: string,
+    type: AccountType,
+    balance: number = 0,
+    loanType?: LoanType,
+    extra?: {
+        odLimit?: number,
+        rdFrequency?: 'Monthly' | 'Daily',
         guarantors?: Guarantor[],
         termMonths?: number,  // Added overrides
         interestRate?: number
     },
     settings: AppSettings = DEFAULT_SETTINGS
 ): Account => {
-  let code = 'ACC';
-  let rate = extra?.interestRate || 0;
-  let term = extra?.termMonths || 0;
-  let originalAmount = balance;
-  let emi: number | undefined = undefined;
-  
-  // Apply default interest rates if not overridden
-  if (!extra?.interestRate) {
-      switch (type) {
-        case AccountType.OPTIONAL_DEPOSIT: 
-            rate = settings.interestRates.optionalDeposit; 
-            break;
-        case AccountType.COMPULSORY_DEPOSIT: 
-            rate = settings.interestRates.compulsoryDeposit; 
-            break;
-        case AccountType.FIXED_DEPOSIT: 
-            rate = settings.interestRates.fixedDeposit; 
-            if (!term) term = 12; // Default
-            break;
-        case AccountType.RECURRING_DEPOSIT: 
-            rate = settings.interestRates.recurringDeposit; 
-            if (!term) term = 24; 
-            break;
-        case AccountType.LOAN: 
-          if (loanType === LoanType.HOME) { rate = settings.interestRates.loan.home; if (!term) term = 120; }
-          else if (loanType === LoanType.GOLD) { rate = settings.interestRates.loan.gold; if (!term) term = 12; }
-          else if (loanType === LoanType.AGRICULTURE) { rate = settings.interestRates.loan.agriculture; if (!term) term = 24; }
-          else if (loanType === LoanType.VEHICLE) { rate = settings.interestRates.loan.vehicle; if (!term) term = 36; }
-          else if (loanType === LoanType.EMERGENCY) { rate = settings.interestRates.loan.emergency; if (!term) term = 12; }
-          else { rate = settings.interestRates.loan.personal; if (!term) term = 36; } 
-          break;
-      }
-  }
+    let code = 'ACC';
+    let rate = extra?.interestRate || 0;
+    let term = extra?.termMonths || 0;
+    let originalAmount = balance;
+    let emi: number | undefined = undefined;
 
-  // Set codes
-  switch (type) {
-      case AccountType.SHARE_CAPITAL: code = 'SHR'; break;
-      case AccountType.OPTIONAL_DEPOSIT: code = 'ODP'; break;
-      case AccountType.COMPULSORY_DEPOSIT: code = 'CD'; break;
-      case AccountType.FIXED_DEPOSIT: code = 'FD'; originalAmount = balance; break;
-      case AccountType.RECURRING_DEPOSIT: code = 'RD'; originalAmount = balance; emi = balance; break; // Set EMI as Installment for RD
-      case AccountType.LOAN: 
-          if (loanType === LoanType.HOME) code = 'HL';
-          else if (loanType === LoanType.GOLD) code = 'GL';
-          else if (loanType === LoanType.AGRICULTURE) code = 'AL';
-          else if (loanType === LoanType.VEHICLE) code = 'VL';
-          else if (loanType === LoanType.EMERGENCY) code = 'EL';
-          else code = 'PL';
-          originalAmount = balance;
-          break;
-  }
+    // Apply default interest rates if not overridden
+    if (!extra?.interestRate) {
+        switch (type) {
+            case AccountType.OPTIONAL_DEPOSIT:
+                rate = settings.interestRates.optionalDeposit;
+                break;
+            case AccountType.COMPULSORY_DEPOSIT:
+                rate = settings.interestRates.compulsoryDeposit;
+                break;
+            case AccountType.FIXED_DEPOSIT:
+                rate = settings.interestRates.fixedDeposit;
+                if (!term) term = 12; // Default
+                break;
+            case AccountType.RECURRING_DEPOSIT:
+                rate = settings.interestRates.recurringDeposit;
+                if (!term) term = 24;
+                break;
+            case AccountType.LOAN:
+                if (loanType === LoanType.HOME) { rate = settings.interestRates.loan.home; if (!term) term = 120; }
+                else if (loanType === LoanType.GOLD) { rate = settings.interestRates.loan.gold; if (!term) term = 12; }
+                else if (loanType === LoanType.AGRICULTURE) { rate = settings.interestRates.loan.agriculture; if (!term) term = 24; }
+                else if (loanType === LoanType.VEHICLE) { rate = settings.interestRates.loan.vehicle; if (!term) term = 36; }
+                else if (loanType === LoanType.EMERGENCY) { rate = settings.interestRates.loan.emergency; if (!term) term = 12; }
+                else { rate = settings.interestRates.loan.personal; if (!term) term = 36; }
+                break;
+        }
+    }
 
-  // Calculate EMI for Loans
-  if (type === AccountType.LOAN && balance > 0 && term > 0) {
-      if (loanType === LoanType.EMERGENCY) {
-          // FLAT RATE Logic
-          const years = term / 12;
-          const totalInterest = balance * (rate / 100) * years;
-          const totalPayable = balance + totalInterest;
-          emi = Math.round(totalPayable / term);
-      } else {
-          // REDUCING BALANCE Logic
-          const r = rate / 12 / 100;
-          const numerator = balance * r * Math.pow(1 + r, term);
-          const denominator = Math.pow(1 + r, term) - 1;
-          emi = Math.round(numerator / denominator);
-      }
-  }
+    // Set codes
+    switch (type) {
+        case AccountType.SHARE_CAPITAL: code = 'SHR'; break;
+        case AccountType.OPTIONAL_DEPOSIT: code = 'ODP'; break;
+        case AccountType.COMPULSORY_DEPOSIT: code = 'CD'; break;
+        case AccountType.FIXED_DEPOSIT: code = 'FD'; originalAmount = balance; break;
+        case AccountType.RECURRING_DEPOSIT: code = 'RD'; originalAmount = balance; emi = balance; break; // Set EMI as Installment for RD
+        case AccountType.LOAN:
+            if (loanType === LoanType.HOME) code = 'HL';
+            else if (loanType === LoanType.GOLD) code = 'GL';
+            else if (loanType === LoanType.AGRICULTURE) code = 'AL';
+            else if (loanType === LoanType.VEHICLE) code = 'VL';
+            else if (loanType === LoanType.EMERGENCY) code = 'EL';
+            else code = 'PL';
+            originalAmount = balance;
+            break;
+    }
 
-  return {
-    id: `ACC-${memberId}-${code}-${Date.now()}`,
-    memberId,
-    type,
-    loanType,
-    accountNumber: `${code}-${Math.floor(Math.random() * 1000000)}`,
-    balance,
-    originalAmount: originalAmount,
-    initialAmount: originalAmount, 
-    emi: emi,
-    odLimit: undefined, 
-    rdFrequency: extra?.rdFrequency,
-    currency: 'INR',
-    status: AccountStatus.ACTIVE,
-    interestRate: rate,
-    initialInterestRate: rate,
-    termMonths: term > 0 ? term : undefined,
-    guarantors: extra?.guarantors || [],
-    transactions: [{
-      id: `TX-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
-      amount: balance,
-      type: 'credit',
-      category: 'Opening Balance',
-      description: 'Initial Deposit / Disbursement',
-      paymentMethod: 'Cash'
-    }]
-  };
+    // Calculate EMI for Loans
+    if (type === AccountType.LOAN && balance > 0 && term > 0) {
+        if (loanType === LoanType.EMERGENCY) {
+            // FLAT RATE Logic
+            const years = term / 12;
+            const totalInterest = balance * (rate / 100) * years;
+            const totalPayable = balance + totalInterest;
+            emi = Math.round(totalPayable / term);
+        } else {
+            // REDUCING BALANCE Logic
+            const r = rate / 12 / 100;
+            const numerator = balance * r * Math.pow(1 + r, term);
+            const denominator = Math.pow(1 + r, term) - 1;
+            emi = Math.round(numerator / denominator);
+        }
+    }
+
+    return {
+        id: `ACC-${memberId}-${code}-${Date.now()}`,
+        memberId,
+        type,
+        loanType,
+        accountNumber: `${code}-${Math.floor(Math.random() * 1000000)}`,
+        balance,
+        originalAmount: originalAmount,
+        initialAmount: originalAmount,
+        emi: emi,
+        odLimit: undefined,
+        rdFrequency: extra?.rdFrequency,
+        currency: 'INR',
+        status: AccountStatus.ACTIVE,
+        interestRate: rate,
+        initialInterestRate: rate,
+        termMonths: term > 0 ? term : undefined,
+        guarantors: extra?.guarantors || [],
+        transactions: [{
+            id: `TX-${Date.now()}`,
+            date: new Date().toISOString().split('T')[0],
+            amount: balance,
+            type: 'credit',
+            category: 'Opening Balance',
+            description: 'Initial Deposit / Disbursement',
+            paymentMethod: 'Cash'
+        }]
+    };
 };
 
 // --- MOCK DATA GENERATOR ---
 const generateMockData = () => {
-    const memberId = 'MEM-MOCK-001';
-    const member: Member = {
-        id: memberId,
-        fullName: 'Demo User Long History',
-        fatherName: 'Mock Father',
-        email: 'demo.long@example.com',
-        phone: '9999999999',
-        currentAddress: '123 Mock Lane',
-        permanentAddress: '123 Mock Lane',
-        city: 'Test City',
-        pinCode: '400001',
-        residenceType: 'Owned',
-        joinDate: '2022-01-01',
-        status: 'Active',
-        avatarUrl: 'https://ui-avatars.com/api/?name=Demo+User&background=random',
-        riskScore: 10
-    };
-
-    const accountId = 'ACC-MOCK-001';
-    // Generate 200+ transactions
-    const transactions: Transaction[] = [];
-    let currentBal = 5000; // Opening balance
-    
-    const startDate = new Date();
-    startDate.setFullYear(startDate.getFullYear() - 2); // Start 2 years ago
-
-    // Opening Tx
-    transactions.push({
-        id: `TX-MOCK-OPEN`,
-        date: startDate.toISOString().split('T')[0],
-        amount: 5000,
-        type: 'credit',
-        description: 'Opening Balance'
-    });
-
-    for (let i = 1; i <= 200; i++) {
-        const date = new Date(startDate);
-        date.setDate(startDate.getDate() + (i * 3)); // Every 3 days approx
-        if (date > new Date()) break;
-
-        const dateStr = date.toISOString().split('T')[0];
-        const isCredit = Math.random() > 0.5;
-        const amount = Math.floor(Math.random() * 5000) + 100;
-
-        if (isCredit) {
-            currentBal += amount;
-            transactions.push({
-                id: `TX-MOCK-${i}`,
-                date: dateStr,
-                amount,
-                type: 'credit',
-                description: i % 20 === 0 ? 'Interest Credited' : 'Cash Deposit',
-                paymentMethod: 'Cash'
-            });
-        } else {
-            // Withdrawal
-            if (currentBal > amount) {
-                currentBal -= amount;
-                transactions.push({
-                    id: `TX-MOCK-${i}`,
-                    date: dateStr,
-                    amount,
-                    type: 'debit',
-                    description: 'Cash Withdrawal',
-                    paymentMethod: 'Cash'
-                });
-            }
-        }
-    }
-
-    // Sort descending for display
-    transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    const account: Account = {
-        id: accountId,
-        memberId: memberId,
-        type: AccountType.OPTIONAL_DEPOSIT,
-        accountNumber: 'OD-9999-LONG',
-        balance: currentBal,
-        status: AccountStatus.ACTIVE,
-        currency: 'INR',
-        interestRate: 4.0,
-        transactions: transactions
-    };
-
-    return { members: [member], accounts: [account] };
+    // CLEAN SLATE FOR TESTING - No default members
+    return { members: [], accounts: [] };
 };
 
 // --- API Operations ---
 
-export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], agents: Agent[] }> => {
-  // Check if Supabase is configured
-  if (!isSupabaseConfigured()) {
-      const mocks = generateMockData();
-      return {
-        members: mocks.members,
-        accounts: mocks.accounts,
-        interactions: [],
-        settings: DEFAULT_SETTINGS,
-        ledger: [],
-        branches: MOCK_BRANCHES,
-        agents: MOCK_AGENTS
-      };
-  }
+// --- API Operations ---
 
-  try {
-      const supabase = getSupabaseClient();
-      const [membersRes, accountsRes, interactionsRes, ledgerRes, branchesRes, agentsRes, settingsRes] = await Promise.all([
-          supabase.from('members').select('*'),
-          supabase.from('accounts').select('*, transactions(*)'),
-          supabase.from('interactions').select('*'),
-          supabase.from('society_ledger').select('*'),
-          supabase.from('branches').select('*'),
-          supabase.from('agents').select('*'),
-          supabase.from('settings').select('*')
-      ]);
+// VOLATILE IN-MEMORY CACHE (Resets on Refresh)
+// This ensures data "effects members" during usability but vanishes on refresh as requested.
+let MEMORY_CACHE: any = null;
 
-      const members = (membersRes.data || []).map(mapMemberFromDB);
-      const accounts = (accountsRes.data || []).map(mapAccountFromDB);
-      const interactions = (interactionsRes.data || []).map(mapInteractionFromDB);
-      const ledger = (ledgerRes.data || []).map(mapLedgerFromDB);
-      const branches = (branchesRes.data || []).map(mapBranchFromDB);
-      const agents = (agentsRes.data || []).map(mapAgentFromDB);
-      
-      // Merge Settings
-      const settings = { ...DEFAULT_SETTINGS };
-      (settingsRes.data || []).forEach((item: any) => {
-          if (item.key === 'interest_rate_optional_deposit') settings.interestRates.optionalDeposit = Number(item.value);
-          else if (item.key === 'interest_rate_fixed_deposit') settings.interestRates.fixedDeposit = Number(item.value);
-          else if (item.key === 'interest_rate_recurring_deposit') settings.interestRates.recurringDeposit = Number(item.value);
-          else if (item.key === 'interest_rate_compulsory_deposit') settings.interestRates.compulsoryDeposit = Number(item.value);
-          else if (item.key === 'interest_rate_home_loan') settings.interestRates.loan.home = Number(item.value);
-          else if (item.key === 'interest_rate_personal_loan') settings.interestRates.loan.personal = Number(item.value);
-          else if (item.key === 'interest_rate_gold_loan') settings.interestRates.loan.gold = Number(item.value);
-          else if (item.key === 'interest_rate_agriculture_loan') settings.interestRates.loan.agriculture = Number(item.value);
-          else if (item.key === 'interest_rate_vehicle_loan') settings.interestRates.loan.vehicle = Number(item.value);
-          else if (item.key === 'interest_rate_emergency_loan') settings.interestRates.loan.emergency = Number(item.value);
-          else if (item.key === 'default_agent_fee') settings.defaultAgentFee = Number(item.value); // Changed
-          else if (item.key === 'late_payment_fine') settings.latePaymentFine = Number(item.value);
-          else if (item.key === 'grace_period_days') settings.gracePeriodDays = Number(item.value);
-      });
-      
-      return { members, accounts, interactions, settings, ledger, branches, agents };
-  } catch (error) {
-      console.error("Critical: Failed to load data from Supabase", error);
-      // Fallback to mock data on error for robustness
-      const mocks = generateMockData();
-      return { members: mocks.members, accounts: mocks.accounts, interactions: [], settings: DEFAULT_SETTINGS, ledger: [], branches: MOCK_BRANCHES, agents: MOCK_AGENTS };
-  }
+const getMemoryCache = () => {
+    if (!MEMORY_CACHE) {
+        const mocks = generateMockData();
+        MEMORY_CACHE = {
+            members: mocks.members,
+            accounts: mocks.accounts,
+            interactions: [],
+            settings: { ...DEFAULT_SETTINGS },
+            ledger: [],
+            branches: [...MOCK_BRANCHES],
+            agents: [...MOCK_AGENTS]
+        };
+    }
+    return MEMORY_CACHE;
 };
 
-// CRITICAL UPDATE: All upsert functions now THROW errors so async callers can catch connection failures.
+export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], agents: Agent[] }> => {
+    // Check if Supabase is configured
+    if (!isSupabaseConfigured()) {
+        // Return volatile memory cache
+        return getMemoryCache();
+    }
+
+    try {
+        const supabase = getSupabaseClient();
+        const [membersRes, accountsRes, interactionsRes, ledgerRes, branchesRes, agentsRes, settingsRes] = await Promise.all([
+            supabase.from('members').select('*'),
+            supabase.from('accounts').select('*, transactions(*)'),
+            supabase.from('interactions').select('*'),
+            supabase.from('society_ledger').select('*'),
+            supabase.from('branches').select('*'),
+            supabase.from('agents').select('*'),
+            supabase.from('settings').select('*')
+        ]);
+
+        const members = (membersRes.data || []).map(mapMemberFromDB);
+        const accounts = (accountsRes.data || []).map(mapAccountFromDB);
+        const interactions = (interactionsRes.data || []).map(mapInteractionFromDB);
+        const ledger = (ledgerRes.data || []).map(mapLedgerFromDB);
+        const branches = (branchesRes.data || []).map(mapBranchFromDB);
+        const agents = (agentsRes.data || []).map(mapAgentFromDB);
+
+        // Merge Settings
+        const settings = { ...DEFAULT_SETTINGS };
+        (settingsRes.data || []).forEach((item: any) => {
+            if (item.key === 'interest_rate_optional_deposit') settings.interestRates.optionalDeposit = Number(item.value);
+            else if (item.key === 'interest_rate_fixed_deposit') settings.interestRates.fixedDeposit = Number(item.value);
+            else if (item.key === 'interest_rate_recurring_deposit') settings.interestRates.recurringDeposit = Number(item.value);
+            else if (item.key === 'interest_rate_compulsory_deposit') settings.interestRates.compulsoryDeposit = Number(item.value);
+            else if (item.key === 'interest_rate_home_loan') settings.interestRates.loan.home = Number(item.value);
+            else if (item.key === 'interest_rate_personal_loan') settings.interestRates.loan.personal = Number(item.value);
+            else if (item.key === 'interest_rate_gold_loan') settings.interestRates.loan.gold = Number(item.value);
+            else if (item.key === 'interest_rate_agriculture_loan') settings.interestRates.loan.agriculture = Number(item.value);
+            else if (item.key === 'interest_rate_vehicle_loan') settings.interestRates.loan.vehicle = Number(item.value);
+            else if (item.key === 'interest_rate_emergency_loan') settings.interestRates.loan.emergency = Number(item.value);
+            else if (item.key === 'default_agent_fee') settings.defaultAgentFee = Number(item.value); // Changed
+            else if (item.key === 'late_payment_fine') settings.latePaymentFine = Number(item.value);
+            else if (item.key === 'grace_period_days') settings.gracePeriodDays = Number(item.value);
+        });
+
+        return { members, accounts, interactions, settings, ledger, branches, agents };
+    } catch (error) {
+        console.error("Critical: Failed to load data from Supabase", error);
+        // Fail gracefully
+        const cache = getMemoryCache();
+        return cache;
+    }
+};
+
+// CRITICAL UPDATE: All upsert functions now check for Local Mode first.
 
 export const upsertMember = async (member: Member) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Member saved locally", member); return; }
+    if (!isSupabaseConfigured()) {
+        console.log("[Volatile] Saving Member", member.fullName);
+        const cache = getMemoryCache();
+        const idx = cache.members.findIndex((m: Member) => m.id === member.id);
+        if (idx >= 0) cache.members[idx] = member; else cache.members.push(member);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('members').upsert(mapMemberToDB(member));
     if (error) throw error;
 };
 
 export const upsertAccount = async (account: Account) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Account saved locally", account); return; }
+    if (!isSupabaseConfigured()) {
+        console.log("[Volatile] Saving Account", account.accountNumber);
+        const cache = getMemoryCache();
+        const idx = cache.accounts.findIndex((a: Account) => a.id === account.id);
+        if (idx >= 0) cache.accounts[idx] = account; else cache.accounts.push(account);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('accounts').upsert(mapAccountToDB(account));
     if (error) throw error;
 };
 
 export const upsertInteraction = async (interaction: Interaction) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Interaction saved locally", interaction); return; }
+    if (!isSupabaseConfigured()) {
+        console.log("[Volatile] Saving Interaction");
+        const cache = getMemoryCache();
+        const idx = cache.interactions.findIndex((i: Interaction) => i.id === interaction.id);
+        if (idx >= 0) cache.interactions[idx] = interaction; else cache.interactions.push(interaction);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('interactions').upsert(mapInteractionToDB(interaction));
     if (error) throw error;
 };
 
 export const upsertLedgerEntry = async (entry: LedgerEntry) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Ledger Entry saved locally", entry); return; }
+    if (!isSupabaseConfigured()) {
+        console.log("[Volatile] Saving Ledger");
+        const cache = getMemoryCache();
+        const idx = cache.ledger.findIndex((l: LedgerEntry) => l.id === entry.id);
+        if (idx >= 0) cache.ledger[idx] = entry; else cache.ledger.push(entry);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('society_ledger').upsert(mapLedgerToDB(entry));
     if (error) throw error;
 };
 
 export const upsertTransaction = async (transaction: Transaction, accountId: string) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Transaction saved locally", transaction); return; }
+    if (!isSupabaseConfigured()) {
+        console.log("[Volatile] Saving Transaction to Account", accountId);
+        const cache = getMemoryCache();
+        const account = cache.accounts.find((a: Account) => a.id === accountId);
+        if (account) {
+            const txIdx = account.transactions.findIndex((t: Transaction) => t.id === transaction.id);
+            if (txIdx >= 0) account.transactions[txIdx] = transaction; else account.transactions.unshift(transaction);
+        }
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').upsert(mapTransactionToDB(transaction, accountId));
     if (error) throw error;
 };
 
 export const upsertBranch = async (branch: Branch) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Branch saved locally", branch); return; }
+    if (!isSupabaseConfigured()) {
+        const cache = getMemoryCache();
+        const idx = cache.branches.findIndex((b: Branch) => b.id === branch.id);
+        if (idx >= 0) cache.branches[idx] = branch; else cache.branches.push(branch);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('branches').upsert(mapBranchToDB(branch));
     if (error) throw error;
 };
 
 export const upsertAgent = async (agent: Agent) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Agent saved locally", agent); return; }
+    if (!isSupabaseConfigured()) {
+        const cache = getMemoryCache();
+        const idx = cache.agents.findIndex((a: Agent) => a.id === agent.id);
+        if (idx >= 0) cache.agents[idx] = agent; else cache.agents.push(agent);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('agents').upsert(mapAgentToDB(agent));
     if (error) throw error;
 };
 
 export const saveSettings = async (settings: AppSettings) => {
-    if (!isSupabaseConfigured()) { console.log("[Local] Settings saved locally", settings); return; }
+    if (!isSupabaseConfigured()) {
+        const cache = getMemoryCache();
+        cache.settings = settings;
+        return;
+    }
     const supabase = getSupabaseClient();
-    
+
     // Transform settings object back to rows
     const updates = [
         { key: 'interest_rate_optional_deposit', value: settings.interestRates.optionalDeposit },

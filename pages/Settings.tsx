@@ -1,402 +1,574 @@
 import React, { useState } from 'react';
 import { AppSettings, Member, AccountType, Account, AccountStatus } from '../types';
 import { createAccount, upsertMember, upsertAccount, upsertTransaction } from '../services/data';
-import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings } from 'lucide-react';
+import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface SettingsPageProps {
-  settings: AppSettings;
-  onUpdateSettings: (s: AppSettings) => Promise<void>;
-  members?: Member[]; // Added for validation
-  onImportSuccess?: () => void;
+    settings: AppSettings;
+    onUpdateSettings: (s: AppSettings) => Promise<void>;
+    members?: Member[]; // Added for validation
+    onImportSuccess?: () => void;
 }
 
-// --- CSV Parsing Utility ---
-const parseCSV = (text: string) => {
-    const lines = text.split('\n').filter(l => l.trim());
-    if (lines.length === 0) return { headers: [], rows: [] };
+export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], onImportSuccess }) => {
+    const [activeTab, setActiveTab] = useState<'config' | 'import'>('config');
+    const [form, setForm] = useState(settings);
+    const [isSaving, setIsSaving] = useState(false);
 
-    // Basic splitting handling comma inside quotes
-    const splitRow = (row: string) => {
-        const result = [];
-        let cur = '';
-        let inQuote = false;
-        for (let i = 0; i < row.length; i++) {
-            const c = row[i];
-            if (c === '"') { inQuote = !inQuote; continue; }
-            if (c === ',' && !inQuote) { result.push(cur.trim()); cur = ''; }
-            else { cur += c; }
+    // Import State
+    const [importType, setImportType] = useState<'members' | 'accounts'>('members');
+    const [previewData, setPreviewData] = useState<any[]>([]);
+    const [page, setPage] = useState(1);
+    const pageSize = 50;
+    const [focusedCell, setFocusedCell] = useState<{ row: number; col: string } | null>(null);
+    const [validationErrors, setValidationErrors] = useState<string[]>([]);
+    const [warnings, setWarnings] = useState<string[]>([]);
+    const [isImporting, setIsImporting] = useState(false);
+    const [successCount, setSuccessCount] = useState(0);
+
+    // --- Configuration Logic ---
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            await onUpdateSettings(form);
+            alert("Settings saved successfully to Database!");
+        } catch (err: any) {
+            console.error(err);
+            alert(`Failed to save settings: ${err.message || "Unknown Error"}`);
+        } finally {
+            setIsSaving(false);
         }
-        result.push(cur.trim());
-        return result;
     };
 
-    const headers = splitRow(lines[0]).map(h => h.toLowerCase().replace(/[\s_]+/g, ''));
-    const rows = lines.slice(1).map(l => {
-        const values = splitRow(l);
-        const obj: any = {};
-        headers.forEach((h, i) => {
-            obj[h] = values[i];
+    const updateRate = (category: keyof AppSettings['interestRates'], value: number) => {
+        setForm({ ...form, interestRates: { ...form.interestRates, [category]: value } });
+    };
+
+    const updateLoanRate = (type: keyof AppSettings['interestRates']['loan'], value: number) => {
+        setForm({ ...form, interestRates: { ...form.interestRates, loan: { ...form.interestRates.loan, [type]: value } } });
+    };
+
+    // --- Import Logic ---
+    const MEMBER_COLS = ['member_id', 'full_name', 'father_name', 'phone', 'current_address', 'join_date', 'email'];
+    const ACCOUNT_COLS = ['member_id', 'account_type', 'opening_balance', 'opening_date'];
+
+    const handlePaste = (text: string) => {
+        if (!text.trim()) return;
+
+        const lines = text.split('\n').filter(l => l.trim());
+        if (lines.length === 0) return;
+
+        const cols = importType === 'members' ? MEMBER_COLS : ACCOUNT_COLS;
+
+        // Determine start position
+        let startRow = focusedCell?.row ?? (previewData.length > 0 ? 0 : 0);
+        let startColKey = focusedCell?.col ?? cols[0];
+        let startColIdx = cols.indexOf(startColKey);
+
+        // Parse text into 2D array
+        const pasteGrid = lines.map(line => line.split('\t').map(v => v.trim()));
+
+        // Check if first row is headers (only if the grid is empty)
+        const firstLineNorm = lines[0].toLowerCase().replace(/[^a-z0-9\t]/g, '');
+        const headerKeywords = ['name', 'id', 'phone', 'member', 'address', 'balance', 'amount', 'date', 'type', 'mno', 'legacy', 'father'];
+        const isHeaderRow = headerKeywords.some(k => firstLineNorm.includes(k));
+
+        let finalData = [...previewData];
+
+        if (isHeaderRow && previewData.length === 0) {
+            // Use Header Mapping for initial paste
+            const headers = lines[0].split('\t').map(h => h.trim());
+            const rowsToProcess = lines.slice(1).map(line => {
+                const values = line.split('\t');
+                const obj: any = {};
+                headers.forEach((h, i) => { if (h) obj[h] = values[i]?.trim(); });
+                return obj;
+            });
+
+            finalData = rowsToProcess.map(row => {
+                const lookup: any = {};
+                Object.keys(row).forEach(k => { lookup[k.toLowerCase().replace(/[^a-z0-9]/g, '')] = row[k]; });
+
+                if (importType === 'members') {
+                    return {
+                        member_id: lookup.memberid || lookup.legacyid || lookup.id || lookup.mno || '',
+                        full_name: lookup.fullname || lookup.name || lookup.membersname || '',
+                        father_name: lookup.fathername || lookup.fatherhusbandname || '',
+                        phone: lookup.phone || lookup.mobile || lookup.phonenumber || '',
+                        current_address: lookup.address || lookup.currentaddress || '',
+                        join_date: lookup.joindate || lookup.openingdate || lookup.date || '',
+                        email: lookup.email || ''
+                    };
+                } else {
+                    return {
+                        member_id: lookup.memberid || lookup.legacyid || '',
+                        account_type: lookup.accounttype || lookup.type || 'Optional Deposit',
+                        opening_balance: lookup.openingbalance || lookup.balance || lookup.amount || '',
+                        opening_date: lookup.openingdate || lookup.date || ''
+                    };
+                }
+            });
+        } else {
+            // Positional Overlay Pattern (Excel style)
+            pasteGrid.forEach((rowValues, rOffset) => {
+                const targetRowIdx = startRow + rOffset;
+
+                // Initialize row if it doesn't exist
+                if (!finalData[targetRowIdx]) {
+                    finalData[targetRowIdx] = importType === 'members'
+                        ? { member_id: '', full_name: '', father_name: '', phone: '', current_address: '', join_date: '', email: '' }
+                        : { member_id: '', account_type: 'Optional Deposit', opening_balance: '', opening_date: '' };
+                }
+
+                rowValues.forEach((val, cOffset) => {
+                    const targetColIdx = startColIdx + cOffset;
+                    if (targetColIdx < cols.length) {
+                        finalData[targetRowIdx][cols[targetColIdx]] = val;
+                    }
+                });
+            });
+        }
+
+        setPreviewData(finalData);
+        setValidationErrors([]);
+    };
+
+
+
+    const validateData = (rows: any[]) => {
+        const errors: string[] = [];
+        const warn: string[] = [];
+        const validRows: any[] = [];
+
+        rows.forEach((row, idx) => {
+            const rowNum = idx + 2;
+
+            if (importType === 'members') {
+                // FLEXIBLE VALIDATION: Smart Matching
+                const hasName = !!row.fullname || !!row.name || !!row.membername || !!row.customername || !!row.member || !!row.membersname;
+                const hasPhone = !!row.phone || !!row.phonenumber || !!row.mobile || !!row.contact || !!row.cell || !!row.mob;
+                const hasLegacyId = !!row.legacyid || !!row.id || !!row.memberid || !!row.oldid || !!row.mno;
+
+                if (!hasName && !hasPhone && !hasLegacyId) {
+                    errors.push(`Row ${rowNum}: Skipped - No Name, Phone, or ID found. Found keys: ${Object.keys(row).join(', ')}`);
+                } else {
+                    const phone = row.phone || row.phonenumber || row.mobile || row.contact || row.cell || row.mob;
+                    if (phone && members.some(m => m.phone === String(phone))) {
+                        warn.push(`Row ${rowNum}: Member with phone ${phone} already exists. Skipping.`);
+                    } else {
+                        // MAP TO DB SCHEMA (snake_case)
+                        const mappedRow = {
+                            member_id: row.legacyid || row.id || row.memberid || row.oldid || row.mno,
+                            full_name: row.fullname || row.name || row.membername || row.customername || row.member || row.membersname,
+                            phone: String(phone || ''),
+                            email: row.email || row.mail || row.emailaddress,
+                            father_name: row.fathername || row.father || row.guardian || row.fatherhusbandname,
+                            current_address: row.address || row.currentaddress || row.addr || row.location,
+                            join_date: row.joindate || row.date || row.joiningdate || row.startdate || row.openingdate || new Date().toISOString().split('T')[0],
+                        };
+                        validRows.push(mappedRow);
+                    }
+                }
+            } else {
+                // ... (Accounts remains similar)
+                const memberId = row.memberid || row.networkid || row.mid || row.legacyid;
+                const memberPhone = row.memberphone || row.phone || row.mobile || row.contact;
+                const balance = row.openingbalance || row.balance || row.amount || row.openbal || row.deposit;
+
+                if ((!memberId && !memberPhone) || balance === undefined) {
+                    errors.push(`Row ${rowNum}: Skipped - Missing Link (ID/Phone) or Balance.`);
+                } else {
+                    let linkedMember = null;
+                    if (memberId) linkedMember = members.find(m => m.id === String(memberId));
+                    if (!linkedMember && memberPhone) linkedMember = members.find(m => m.phone === String(memberPhone));
+
+                    if (!linkedMember) {
+                        warn.push(`Row ${rowNum}: Member not found (ID: ${memberId}, Phone: ${memberPhone}). Record skipped.`);
+                    } else {
+                        validRows.push({
+                            member_id: linkedMember.id,
+                            account_type: row.accounttype || row.type || row.acctype || row.product,
+                            opening_balance: balance,
+                            opening_date: row.openingdate || row.opendate || row.date || row.startdate,
+                            _linkedMemberId: linkedMember.id
+                        });
+                    }
+                }
+            }
         });
-        return obj;
-    });
 
-    return { headers, rows };
-};
+        setValidationErrors(errors);
+        setWarnings(warn);
+        setPreviewData(validRows);
+    };
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], onImportSuccess }) => {
-  const [activeTab, setActiveTab] = useState<'config' | 'import'>('config');
-  const [form, setForm] = useState(settings);
-  const [isSaving, setIsSaving] = useState(false);
-  
-  // Import State
-  const [importType, setImportType] = useState<'members' | 'accounts'>('members');
-  const [previewData, setPreviewData] = useState<any[]>([]);
-  const [validationErrors, setValidationErrors] = useState<string[]>([]);
-  const [isImporting, setIsImporting] = useState(false);
-  const [successCount, setSuccessCount] = useState(0);
+    const executeImport = async () => {
+        if (previewData.length === 0) return;
+        setIsImporting(true);
+        let count = 0;
 
-  // --- Configuration Logic ---
-  const handleSave = async () => {
-      setIsSaving(true);
-      try {
-          await onUpdateSettings(form);
-          alert("Settings saved successfully to Database!");
-      } catch (err: any) {
-          console.error(err);
-          alert(`Failed to save settings: ${err.message || "Unknown Error"}`);
-      } finally {
-          setIsSaving(false);
-      }
-  };
+        try {
+            // Process in BATCHES for speed (Parallelism)
+            const BATCH_SIZE = 10;
+            const rows = [...previewData];
 
-  const updateRate = (category: keyof AppSettings['interestRates'], value: number) => {
-      setForm({ ...form, interestRates: { ...form.interestRates, [category]: value } });
-  };
+            for (let i = 0; i < rows.length; i += BATCH_SIZE) {
+                const batch = rows.slice(i, i + BATCH_SIZE);
 
-  const updateLoanRate = (type: keyof AppSettings['interestRates']['loan'], value: number) => {
-      setForm({ ...form, interestRates: { ...form.interestRates, loan: { ...form.interestRates.loan, [type]: value } } });
-  };
+                await Promise.all(batch.map(async (row) => {
+                    if (importType === 'members') {
+                        const phone = row.phone || row.phonenumber || "";
+                        const fullName = row.full_name || row.fullname || row.name || "Unknown Member";
+                        const legacyId = row.member_id || row.legacyid || row.id;
+                        const joinDate = row.join_date || row.joindate || new Date().toISOString().split('T')[0];
 
-  // --- Import Logic ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+                        const newMember: Member = {
+                            id: legacyId ? String(legacyId) : `MEM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                            fullName: fullName,
+                            phone: String(phone),
+                            email: row.email || "",
+                            fatherName: row.father_name || row.fathername || "",
+                            currentAddress: row.current_address || row.address || "",
+                            permanentAddress: row.current_address || row.address || "",
+                            joinDate: joinDate,
+                            status: 'Active',
+                            avatarUrl: `https://ui-avatars.com/api/?name=${fullName.replace(' ', '+')}`,
+                            riskScore: 0
+                        };
+                        await upsertMember(newMember);
+                    } else {
+                        let type = AccountType.OPTIONAL_DEPOSIT;
+                        const inputType = (row.account_type || row.accounttype || row.type || '').toLowerCase();
 
-      const reader = new FileReader();
-      reader.onload = (evt) => {
-          const text = evt.target?.result as string;
-          const { rows } = parseCSV(text);
-          validateData(rows);
-      };
-      reader.readAsText(file);
-  };
+                        if (inputType.includes('share')) type = AccountType.SHARE_CAPITAL;
+                        else if (inputType.includes('compulsory')) type = AccountType.COMPULSORY_DEPOSIT;
+                        else if (inputType.includes('fixed')) type = AccountType.FIXED_DEPOSIT;
+                        else if (inputType.includes('recurring')) type = AccountType.RECURRING_DEPOSIT;
+                        else if (inputType.includes('loan')) type = AccountType.LOAN;
 
-  const validateData = (rows: any[]) => {
-      const errors: string[] = [];
-      const validRows: any[] = [];
+                        const balValue = row.opening_balance || row.openingbalance || row.balance || row.amount || '0';
+                        const balance = parseFloat(String(balValue));
+                        const linkedMemberId = row.member_id || row.memberid || row._linkedMemberId;
 
-      rows.forEach((row, idx) => {
-          const rowNum = idx + 2; // header is 1
-          if (importType === 'members') {
-              // Required: fullname, phone, joindate
-              if (!row.fullname || !row.phone || !row.joindate) {
-                  errors.push(`Row ${rowNum}: Missing Name, Phone or Join Date`);
-              } else if (members.some(m => m.phone === row.phone)) {
-                   errors.push(`Row ${rowNum}: Member with phone ${row.phone} already exists`);
-              } else {
-                  validRows.push(row);
-              }
-          } else {
-              // Accounts
-              // Required: memberphone, accounttype, openingbalance, openingdate
-              if (!row.memberphone || !row.accounttype || !row.openingbalance) {
-                  errors.push(`Row ${rowNum}: Missing Member Phone, Type or Balance`);
-              } else {
-                  const memberExists = members.find(m => m.phone === row.memberphone || m.id === row.memberphone);
-                  if (!memberExists) {
-                      errors.push(`Row ${rowNum}: Member with phone/ID ${row.memberphone} not found`);
-                  } else {
-                      validRows.push({ ...row, memberId: memberExists.id });
-                  }
-              }
-          }
-      });
+                        if (linkedMemberId) {
+                            const newAcc = createAccount(linkedMemberId, type, balance, undefined, undefined, settings);
+                            const openDate = row.opening_date || row.openingdate || row.opendate || row.date;
 
-      setValidationErrors(errors);
-      setPreviewData(validRows);
-  };
+                            if (openDate && newAcc.transactions.length > 0) {
+                                newAcc.transactions[0].date = openDate;
+                                newAcc.transactions[0].description = "Opening Balance (Imported)";
+                            }
 
-  const executeImport = async () => {
-      if (previewData.length === 0) return;
-      setIsImporting(true);
-      let count = 0;
+                            await upsertAccount(newAcc);
+                            await upsertTransaction(newAcc.transactions[0], newAcc.id);
+                        }
+                    }
+                    count++;
+                }));
+            }
 
-      try {
-          if (importType === 'members') {
-              for (const row of previewData) {
-                  const newMember: Member = {
-                      id: row.legacyid || `MEM-${Date.now()}-${Math.floor(Math.random()*1000)}`,
-                      fullName: row.fullname,
-                      phone: row.phone,
-                      email: row.email || '',
-                      fatherName: row.fathername,
-                      currentAddress: row.address,
-                      permanentAddress: row.address,
-                      joinDate: row.joindate, // Historical Date
-                      status: 'Active',
-                      avatarUrl: `https://ui-avatars.com/api/?name=${row.fullname.replace(' ', '+')}`,
-                      riskScore: 0
-                  };
-                  await upsertMember(newMember);
-                  count++;
-              }
-          } else {
-              for (const row of previewData) {
-                  // Map CSV Account Type string to Enum
-                  let type = AccountType.OPTIONAL_DEPOSIT;
-                  const inputType = row.accounttype.toLowerCase();
-                  if (inputType.includes('share')) type = AccountType.SHARE_CAPITAL;
-                  else if (inputType.includes('compulsory')) type = AccountType.COMPULSORY_DEPOSIT;
-                  else if (inputType.includes('fixed')) type = AccountType.FIXED_DEPOSIT;
-                  else if (inputType.includes('recurring')) type = AccountType.RECURRING_DEPOSIT;
-                  else if (inputType.includes('loan')) type = AccountType.LOAN;
-                  
-                  // Use helper but Override transactions to set historical date
-                  const balance = parseFloat(row.openingbalance) || 0;
-                  const newAcc = createAccount(row.memberId, type, balance, undefined, undefined, settings);
-                  
-                  // Override Opening Transaction Date
-                  if (row.openingdate && newAcc.transactions.length > 0) {
-                      newAcc.transactions[0].date = row.openingdate;
-                      newAcc.transactions[0].description = "Opening Balance (Imported)";
-                  }
+            setSuccessCount(count);
+            setPreviewData([]);
+            setPage(1);
+            setValidationErrors([]);
+            if (onImportSuccess) onImportSuccess();
+            alert(`Successfully imported ${count} records!`);
+        } catch (err) {
+            console.error(err);
+            alert("Import failed partially. Check console.");
+        } finally {
+            setIsImporting(false);
+        }
+    };
 
-                  await upsertAccount(newAcc);
-                  await upsertTransaction(newAcc.transactions[0], newAcc.id);
-                  count++;
-              }
-          }
-          
-          setSuccessCount(count);
-          setPreviewData([]);
-          setValidationErrors([]);
-          if (onImportSuccess) onImportSuccess();
-          alert(`Successfully imported ${count} records!`);
-      } catch (err) {
-          console.error(err);
-          alert("Import failed partially. Check console.");
-      } finally {
-          setIsImporting(false);
-      }
-  };
+    const downloadTemplate = () => {
+        let content = "";
+        if (importType === 'members') {
+            content = "legacy_id,full_name,phone,join_date,address,father_name,email\n1001,John Doe,9876543210,2022-01-15,123 Main St,Father Doe,john@example.com";
+        } else {
+            content = "member_phone,account_type,opening_balance,opening_date\n9876543210,Share Capital,500,2022-01-15\n9876543210,Optional Deposit,5000,2022-02-01";
+        }
+        const blob = new Blob([content], { type: 'text/csv' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${importType}_template.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
 
-  const downloadTemplate = () => {
-      let content = "";
-      if (importType === 'members') {
-          content = "legacy_id,full_name,phone,join_date,address,father_name,email\n1001,John Doe,9876543210,2022-01-15,123 Main St,Father Doe,john@example.com";
-      } else {
-          content = "member_phone,account_type,opening_balance,opening_date\n9876543210,Share Capital,500,2022-01-15\n9876543210,Optional Deposit,5000,2022-02-01";
-      }
-      const blob = new Blob([content], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `${importType}_template.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-  };
+    return (
+        <div className="animate-fade-in max-w-5xl pb-10">
+            <div className="mb-6 flex justify-between items-center">
+                <div>
+                    <h2 className="text-2xl font-bold text-slate-900">Settings (Copy-Paste Import)</h2>
+                    <p className="text-slate-500 text-sm">Configure system parameters and manage data.</p>
+                </div>
+            </div>
 
-  return (
-    <div className="animate-fade-in max-w-5xl pb-10">
-      <div className="mb-6 flex justify-between items-center">
-        <div>
-           <h2 className="text-2xl font-bold text-slate-900">Settings</h2>
-           <p className="text-slate-500 text-sm">Configure system parameters and manage data.</p>
+            {/* Tabs */}
+            <div className="flex gap-6 border-b border-slate-200 mb-6">
+                <button
+                    onClick={() => setActiveTab('config')}
+                    className={`pb-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'config' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
+                >
+                    <Settings size={16} /> System Configuration
+                </button>
+                <button
+                    onClick={() => setActiveTab('import')}
+                    className={`pb-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'import' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
+                >
+                    <Database size={16} /> Data Management (Bulk Import)
+                </button>
+            </div>
+
+            {activeTab === 'config' && (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Fees & Commissions</h3>
+                        <div className="space-y-4">
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Late Payment Fine</label>
+                                <input
+                                    type="number"
+                                    className="border border-slate-300 bg-white text-slate-900 rounded-lg p-2 w-full"
+                                    value={form.latePaymentFine}
+                                    onChange={(e) => setForm({ ...form, latePaymentFine: parseInt(e.target.value) || 0 })}
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Grace Period (Days)</label>
+                                <input
+                                    type="number"
+                                    className="border border-slate-300 bg-white text-slate-900 rounded-lg p-2 w-full"
+                                    value={form.gracePeriodDays}
+                                    onChange={(e) => setForm({ ...form, gracePeriodDays: parseInt(e.target.value) || 0 })}
+                                />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Deposit Interest Rates (%)</h3>
+                        <div className="space-y-4">
+                            {[
+                                { label: 'Optional Deposit', key: 'optionalDeposit' },
+                                { label: 'Fixed Deposit (FD)', key: 'fixedDeposit' },
+                                { label: 'Recurring Deposit (RD)', key: 'recurringDeposit' },
+                            ].map((item) => (
+                                <div key={item.key} className="flex justify-between items-center">
+                                    <label className="text-sm text-slate-600">{item.label}</label>
+                                    <input
+                                        type="number" step="0.1"
+                                        className="border border-slate-300 bg-white text-slate-900 rounded-lg p-1 w-20 text-right"
+                                        value={form.interestRates[item.key as keyof typeof form.interestRates] as number}
+                                        onChange={(e) => updateRate(item.key as any, parseFloat(e.target.value))}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="col-span-1 md:col-span-2 flex justify-end">
+                        <button
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isSaving ? <Loader className="animate-spin" size={18} /> : <Save size={18} />}
+                            Save Configuration
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'import' && (
+                <div className="animate-fade-in h-[calc(100vh-200px)] flex flex-col space-y-4">
+                    {/* Header & Mode Selection */}
+                    <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex justify-between items-center text-blue-800 text-sm">
+                        <div className="flex gap-3">
+                            <Database className="shrink-0" size={20} />
+                            <div>
+                                <p className="font-bold">Bulk Import ({importType})</p>
+                                <p>Copy rows from Excel and Paste (Ctrl+V) anywhere on the grid.</p>
+                            </div>
+                        </div>
+                        <div className="flex bg-white rounded-lg border border-blue-200 p-1">
+                            <button
+                                onClick={() => { setImportType('members'); setPreviewData([]); }}
+                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'members' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                Members
+                            </button>
+                            <button
+                                onClick={() => { setImportType('accounts'); setPreviewData([]); }}
+                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'accounts' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                Accounts
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Validation & Warnings */}
+                    {(validationErrors.length > 0 || warnings.length > 0) && (
+                        <div className="max-h-32 overflow-y-auto space-y-2">
+                            {validationErrors.length > 0 && (
+                                <div className="p-3 bg-red-50 text-red-700 text-xs border border-red-100 rounded-lg">
+                                    <p className="font-bold flex items-center gap-2 mb-1"><AlertCircle size={12} /> Errors ({validationErrors.length})</p>
+                                    <ul className="list-disc pl-4 space-y-1">{validationErrors.map((e, i) => <li key={i}>{e}</li>)}</ul>
+                                </div>
+                            )}
+                            {warnings.length > 0 && (
+                                <div className="p-3 bg-yellow-50 text-yellow-800 text-xs border border-yellow-100 rounded-lg">
+                                    <p className="font-bold flex items-center gap-2 mb-1"><AlertTriangle size={12} /> Warnings ({warnings.length})</p>
+                                    <ul className="list-disc pl-4 space-y-1">{warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* SPREADSHEET GRID */}
+                    <div
+                        className="flex-1 flex flex-col bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden relative outline-none focus-within:ring-1 focus-within:ring-blue-100"
+                        onPaste={(e) => {
+                            const text = e.clipboardData.getData('text');
+                            if (text.includes('\t') || text.includes('\n')) {
+                                e.preventDefault();
+                                handlePaste(text);
+                            }
+                        }}
+                    >
+                        {/* Grid Toolbar */}
+                        <div className="p-2 bg-slate-50 border-b border-slate-200 flex justify-between items-center text-xs">
+                            <div className="flex gap-2">
+                                <span className="font-bold text-slate-700 px-2 py-1">Grid Area</span>
+                                <span className="text-slate-400 border-l border-slate-300 pl-2 ml-2 flex items-center gap-1">
+                                    {previewData.length} Rows
+                                </span>
+                            </div>
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => {
+                                        const newRow = importType === 'members'
+                                            ? { member_id: '', full_name: '', father_name: '', phone: '', current_address: '', join_date: '', email: '' }
+                                            : { member_id: '', account_type: 'Optional Deposit', opening_balance: '', opening_date: '' };
+                                        setPreviewData([...previewData, newRow]);
+                                    }}
+                                    className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-1"
+                                >
+                                    <Plus size={12} /> Add Row
+                                </button>
+                                <button
+                                    onClick={() => { setPreviewData([]); setValidationErrors([]); setWarnings([]); }}
+                                    className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-1"
+                                >
+                                    <Trash2 size={12} /> Clear All
+                                </button>
+                                <div className="mx-2 w-px h-6 bg-slate-200" />
+                                <button
+                                    onClick={executeImport}
+                                    disabled={isImporting || validationErrors.length > 0 || previewData.length === 0}
+                                    className="px-4 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm transition-all"
+                                >
+                                    {isImporting ? <Loader className="animate-spin" size={12} /> : <CheckCircle size={12} />}
+                                    Import {previewData.length} Records
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Editable Table */}
+                        <div className="flex-1 overflow-auto bg-slate-50 relative">
+                            <table className="w-full text-xs border-collapse bg-white">
+                                <thead className="sticky top-0 z-10 bg-slate-100 shadow-sm text-slate-600 font-semibold text-left">
+                                    <tr>
+                                        <th className="p-2 border border-slate-200 w-10 text-center">#</th>
+                                        {importType === 'members' ? (
+                                            <>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Member ID</th>
+                                                <th className="p-2 border border-slate-200 min-w-[150px]">Full Name</th>
+                                                <th className="p-2 border border-slate-200 min-w-[150px]">Father's Name</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Phone</th>
+                                                <th className="p-2 border border-slate-200 min-w-[200px]">Address</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Join Date</th>
+                                                <th className="p-2 border border-slate-200 min-w-[150px]">Email</th>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Member ID</th>
+                                                <th className="p-2 border border-slate-200 min-w-[150px]">Account Type</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Balance</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Open Date</th>
+                                            </>
+                                        )}
+                                        <th className="p-2 border border-slate-200 w-10"></th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100">
+                                    {previewData.length === 0 && (
+                                        <tr className="absolute inset-x-0 top-20 pointer-events-none">
+                                            <td colSpan={10} className="text-slate-300 font-bold text-lg flex flex-col items-center gap-2">
+                                                <Database size={48} className="opacity-20" />
+                                                <span>Copy Your Excel Rows & Press Ctrl+V</span>
+                                            </td>
+                                        </tr>
+                                    )}
+
+                                    {previewData.slice(0, page * pageSize).map((row, idx) => (
+                                        <tr key={idx} className="hover:bg-blue-50/30 transition-colors">
+                                            <td className="p-1 border border-slate-200 text-center text-slate-400 bg-slate-50 font-mono">{idx + 1}</td>
+                                            {importType === 'members' ? (
+                                                <>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.member_id || ''} onFocus={() => setFocusedCell({ row: idx, col: 'member_id' })} onChange={(e) => { const n = [...previewData]; n[idx].member_id = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.full_name || ''} onFocus={() => setFocusedCell({ row: idx, col: 'full_name' })} onChange={(e) => { const n = [...previewData]; n[idx].full_name = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.father_name || ''} onFocus={() => setFocusedCell({ row: idx, col: 'father_name' })} onChange={(e) => { const n = [...previewData]; n[idx].father_name = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.phone || ''} onFocus={() => setFocusedCell({ row: idx, col: 'phone' })} onChange={(e) => { const n = [...previewData]; n[idx].phone = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.current_address || ''} onFocus={() => setFocusedCell({ row: idx, col: 'current_address' })} onChange={(e) => { const n = [...previewData]; n[idx].current_address = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="date" className="w-full h-full p-2 outline-none bg-transparent" value={row.join_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'join_date' })} onChange={(e) => { const n = [...previewData]; n[idx].join_date = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.email || ''} onFocus={() => setFocusedCell({ row: idx, col: 'email' })} onChange={(e) => { const n = [...previewData]; n[idx].email = e.target.value; setPreviewData(n); }} /></td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.member_id || ''} onFocus={() => setFocusedCell({ row: idx, col: 'member_id' })} onChange={(e) => { const n = [...previewData]; n[idx].member_id = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0">
+                                                        <select className="w-full h-full p-2 outline-none bg-transparent" value={row.account_type || 'Optional Deposit'} onFocus={() => setFocusedCell({ row: idx, col: 'account_type' })} onChange={(e) => { const n = [...previewData]; n[idx].account_type = e.target.value; setPreviewData(n); }}>
+                                                            {Object.values(AccountType).map(t => <option key={t} value={t}>{t}</option>)}
+                                                        </select>
+                                                    </td>
+                                                    <td className="border border-slate-200 p-0"><input type="number" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_balance || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_balance' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_balance = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="date" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_date' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_date = e.target.value; setPreviewData(n); }} /></td>
+                                                </>
+                                            )}
+                                            <td className="p-1 border border-slate-200 text-center">
+                                                <button
+                                                    onClick={() => { const n = [...previewData]; n.splice(idx, 1); setPreviewData(n); }}
+                                                    className="text-slate-300 hover:text-red-500 transition-colors"
+                                                >
+                                                    <X size={12} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+
+                                    {previewData.length > page * pageSize && (
+                                        <tr>
+                                            <td colSpan={importType === 'members' ? 8 : 5} className="p-4 text-center">
+                                                <button
+                                                    onClick={() => setPage(p => p + 1)}
+                                                    className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-bold text-xs"
+                                                >
+                                                    Load More Rows (Showing {page * pageSize} of {previewData.length})
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
-      </div>
-
-      {/* Tabs */}
-      <div className="flex gap-6 border-b border-slate-200 mb-6">
-          <button 
-             onClick={() => setActiveTab('config')} 
-             className={`pb-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'config' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
-          >
-             <Settings size={16}/> System Configuration
-          </button>
-          <button 
-             onClick={() => setActiveTab('import')} 
-             className={`pb-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'import' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
-          >
-             <Database size={16}/> Data Management (Bulk Import)
-          </button>
-      </div>
-
-      {activeTab === 'config' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-fade-in">
-             <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                  <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Fees & Commissions</h3>
-                  <div className="space-y-4">
-                      <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Late Payment Fine</label>
-                          <input 
-                              type="number"
-                              className="border border-slate-300 bg-white text-slate-900 rounded-lg p-2 w-full"
-                              value={form.latePaymentFine}
-                              onChange={(e) => setForm({...form, latePaymentFine: parseInt(e.target.value) || 0})}
-                          />
-                      </div>
-                      <div>
-                          <label className="block text-sm font-medium text-slate-700 mb-1">Grace Period (Days)</label>
-                          <input 
-                              type="number"
-                              className="border border-slate-300 bg-white text-slate-900 rounded-lg p-2 w-full"
-                              value={form.gracePeriodDays}
-                              onChange={(e) => setForm({...form, gracePeriodDays: parseInt(e.target.value) || 0})}
-                          />
-                      </div>
-                  </div>
-              </div>
-
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                   <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100">Deposit Interest Rates (%)</h3>
-                   <div className="space-y-4">
-                       {[
-                           { label: 'Optional Deposit', key: 'optionalDeposit' },
-                           { label: 'Fixed Deposit (FD)', key: 'fixedDeposit' },
-                           { label: 'Recurring Deposit (RD)', key: 'recurringDeposit' },
-                       ].map((item) => (
-                           <div key={item.key} className="flex justify-between items-center">
-                               <label className="text-sm text-slate-600">{item.label}</label>
-                               <input 
-                                   type="number" step="0.1"
-                                   className="border border-slate-300 bg-white text-slate-900 rounded-lg p-1 w-20 text-right"
-                                   value={form.interestRates[item.key as keyof typeof form.interestRates] as number}
-                                   onChange={(e) => updateRate(item.key as any, parseFloat(e.target.value))}
-                               />
-                           </div>
-                       ))}
-                   </div>
-              </div>
-
-              <div className="col-span-1 md:col-span-2 flex justify-end">
-                   <button 
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 disabled:opacity-50"
-                  >
-                      {isSaving ? <Loader className="animate-spin" size={18} /> : <Save size={18} />}
-                      Save Configuration
-                  </button>
-              </div>
-          </div>
-      )}
-
-      {activeTab === 'import' && (
-          <div className="animate-fade-in space-y-6">
-              <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex gap-3 text-blue-800 text-sm">
-                  <Database className="shrink-0" size={20} />
-                  <div>
-                      <p className="font-bold">Historical Data Migration</p>
-                      <p>Use this tool to bulk import members and their account balances from your previous system. Always import <strong>Members</strong> first, then <strong>Accounts</strong>.</p>
-                  </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <div className="space-y-4">
-                       <h3 className="font-bold text-slate-900">Step 1: Select Import Type</h3>
-                       <div className="flex gap-4">
-                           <button 
-                             onClick={() => { setImportType('members'); setPreviewData([]); setValidationErrors([]); }}
-                             className={`flex-1 p-4 border rounded-xl text-left transition-all ${importType === 'members' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 hover:border-slate-300'}`}
-                           >
-                               <div className="font-bold text-slate-900 mb-1">Members</div>
-                               <div className="text-xs text-slate-500">Name, Phone, Address, Join Date</div>
-                           </button>
-                           <button 
-                             onClick={() => { setImportType('accounts'); setPreviewData([]); setValidationErrors([]); }}
-                             className={`flex-1 p-4 border rounded-xl text-left transition-all ${importType === 'accounts' ? 'border-blue-600 bg-blue-50 ring-1 ring-blue-600' : 'border-slate-200 hover:border-slate-300'}`}
-                           >
-                               <div className="font-bold text-slate-900 mb-1">Accounts</div>
-                               <div className="text-xs text-slate-500">Balances, Open Date, Type</div>
-                           </button>
-                       </div>
-
-                       <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm space-y-4">
-                           <div className="flex justify-between items-center">
-                               <span className="font-bold text-sm text-slate-700">Upload CSV File</span>
-                               <button onClick={downloadTemplate} className="text-blue-600 text-xs hover:underline flex items-center gap-1">
-                                   <Download size={12}/> Download Template
-                               </button>
-                           </div>
-                           <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:border-blue-500 transition-colors bg-slate-50 relative">
-                               <input 
-                                 type="file" 
-                                 accept=".csv"
-                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                                 onChange={handleFileUpload}
-                               />
-                               <Upload className="mx-auto text-slate-400 mb-2" size={24} />
-                               <p className="text-sm text-slate-500">Click to upload or drag {importType} CSV</p>
-                           </div>
-                       </div>
-                  </div>
-
-                  <div className="space-y-4">
-                      <h3 className="font-bold text-slate-900">Step 2: Preview & Validate</h3>
-                      <div className="bg-white rounded-xl border border-slate-200 shadow-sm h-[320px] overflow-hidden flex flex-col">
-                          {validationErrors.length > 0 ? (
-                              <div className="p-4 bg-red-50 text-red-700 text-sm overflow-y-auto flex-1">
-                                  <p className="font-bold flex items-center gap-2 mb-2"><AlertCircle size={16}/> Found {validationErrors.length} Errors</p>
-                                  <ul className="list-disc pl-4 space-y-1">
-                                      {validationErrors.slice(0, 10).map((err, i) => <li key={i}>{err}</li>)}
-                                      {validationErrors.length > 10 && <li>...and {validationErrors.length - 10} more</li>}
-                                  </ul>
-                              </div>
-                          ) : previewData.length > 0 ? (
-                              <div className="flex-1 flex flex-col">
-                                  <div className="p-3 bg-green-50 text-green-700 text-sm font-bold flex justify-between items-center">
-                                      <span className="flex items-center gap-2"><CheckCircle size={16}/> {previewData.length} Valid Records Ready</span>
-                                  </div>
-                                  <div className="flex-1 overflow-auto p-0">
-                                      <table className="w-full text-xs text-left">
-                                          <thead className="bg-slate-50 sticky top-0">
-                                              <tr>
-                                                  {Object.keys(previewData[0]).slice(0, 3).map(k => <th key={k} className="p-2 border-b capitalize">{k}</th>)}
-                                              </tr>
-                                          </thead>
-                                          <tbody>
-                                              {previewData.slice(0, 10).map((row, i) => (
-                                                  <tr key={i} className="border-b">
-                                                      {Object.values(row).slice(0, 3).map((v: any, j) => <td key={j} className="p-2">{v}</td>)}
-                                                  </tr>
-                                              ))}
-                                          </tbody>
-                                      </table>
-                                      {previewData.length > 10 && <p className="p-2 text-center text-xs text-slate-400">...and {previewData.length - 10} more</p>}
-                                  </div>
-                              </div>
-                          ) : (
-                              <div className="flex-1 flex items-center justify-center text-slate-400 text-sm italic">
-                                  No data loaded yet.
-                              </div>
-                          )}
-                          
-                          <div className="p-4 border-t border-slate-100 bg-slate-50">
-                              <button 
-                                onClick={executeImport}
-                                disabled={isImporting || previewData.length === 0}
-                                className="w-full py-2 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800 disabled:opacity-50 flex items-center justify-center gap-2"
-                              >
-                                  {isImporting ? <Loader className="animate-spin" size={16}/> : <Database size={16}/>}
-                                  {isImporting ? 'Importing...' : 'Import to Database'}
-                              </button>
-                          </div>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      )}
-    </div>
-  );
+    );
 };
