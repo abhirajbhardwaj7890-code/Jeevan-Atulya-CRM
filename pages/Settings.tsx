@@ -25,6 +25,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const [validationErrors, setValidationErrors] = useState<string[]>([]);
     const [warnings, setWarnings] = useState<string[]>([]);
     const [isImporting, setIsImporting] = useState(false);
+    const [importLogs, setImportLogs] = useState<{ name: string, error: string }[]>([]);
     const [successCount, setSuccessCount] = useState(0);
 
     // --- Configuration Logic ---
@@ -223,8 +224,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const executeImport = async () => {
         if (previewData.length === 0) return;
         setIsImporting(true);
+        setImportLogs([]);
         let count = 0;
         let failCount = 0;
+        const newLogs: { name: string, error: string }[] = [];
 
         try {
             // Process in BATCHES for speed (Parallelism)
@@ -285,11 +288,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         }
                         count++;
                     } catch (err: any) {
+                        const errorMsg = err.message || JSON.stringify(err);
                         console.error(`Row Import Failed: ${row.full_name || row.member_id}`, err);
+                        newLogs.push({ name: row.full_name || row.member_id || `Row ${i + batch.indexOf(row) + 1}`, error: errorMsg });
                         failCount++;
                     }
                 }));
             }
+
+            setImportLogs(newLogs);
 
             setSuccessCount(count);
             setPreviewData([]);
@@ -440,8 +447,25 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     </div>
 
                     {/* Validation & Warnings */}
-                    {(validationErrors.length > 0 || warnings.length > 0) && (
+                    {(validationErrors.length > 0 || warnings.length > 0 || importLogs.length > 0) && (
                         <div className="max-h-32 overflow-y-auto space-y-2">
+                            {importLogs.length > 0 && (
+                                <div className="mt-4 p-4 bg-red-50 border border-red-100 rounded-xl">
+                                    <h4 className="text-red-800 font-bold mb-2 flex items-center gap-2">
+                                        <X className="w-4 h-4" />
+                                        Failed Records ({importLogs.length})
+                                    </h4>
+                                    <div className="max-h-60 overflow-y-auto space-y-2">
+                                        {importLogs.map((log, i) => (
+                                            <div key={i} className="text-xs bg-white p-2 rounded border border-red-100 flex justify-between gap-4">
+                                                <span className="font-bold text-slate-700">{log.name}</span>
+                                                <span className="text-red-500 font-mono italic">{log.error}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
                             {validationErrors.length > 0 && (
                                 <div className="p-3 bg-red-50 text-red-700 text-xs border border-red-100 rounded-lg">
                                     <p className="font-bold flex items-center gap-2 mb-1"><AlertCircle size={12} /> Errors ({validationErrors.length})</p>
