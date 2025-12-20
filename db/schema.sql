@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS interactions (
 -- ============================================
 CREATE TABLE IF NOT EXISTS ledger_entries (
     id TEXT PRIMARY KEY,
+    member_id TEXT REFERENCES members(id) ON DELETE CASCADE,
     date DATE NOT NULL,
     description TEXT NOT NULL,
     amount NUMERIC(15,2) NOT NULL,

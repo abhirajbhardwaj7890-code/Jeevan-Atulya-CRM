@@ -14,11 +14,9 @@ interface MemberDetailProps {
     onBack: () => void;
     onAddInteraction: (note: Partial<Interaction>) => void;
     onAddTransaction: (accountId: string, transaction: Partial<Transaction>) => void;
-    onAddAccount: (memberId: string, account: Partial<Account>) => void;
-    onUpdateMember: (member: Member) => void;
-    onUpdateAccount: (account: Account) => void;
     onAddLedgerEntry: (entry: LedgerEntry) => void;
-    onOpenPassbook: () => void; // New Prop
+    onOpenPassbook: () => void;
+    ledger?: LedgerEntry[]; // Added to show member-related fees/fines
 }
 
 const formatCurrency = (amount: number) => {
@@ -853,6 +851,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL) {
             onAddLedgerEntry({
                 id: `LDG-FEES-${Date.now()}`,
+                memberId: member.id,
                 date: new Date().toISOString().split('T')[0],
                 description: `Loan Fees (Personal) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
                 amount: 700,
@@ -1134,53 +1133,100 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
                     {activeTab === 'receipts' && (
                         <div className="space-y-6">
-                            {/* Table from previous implementation */}
                             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                                {/* Headers */}
+                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                        <History size={18} className="text-blue-600" />
+                                        Financial Activity & Receipts
+                                    </h3>
+                                    <div className="text-xs text-slate-500 font-medium">
+                                        Showing last 50 financial interactions
+                                    </div>
+                                </div>
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left text-sm">
-                                        <thead className="bg-slate-100 border-b border-slate-200">
+                                        <thead className="bg-slate-100/80 border-b border-slate-200">
                                             <tr>
                                                 <th className="px-6 py-3 font-semibold text-slate-700">Date</th>
                                                 <th className="px-6 py-3 font-semibold text-slate-700">Description</th>
-                                                <th className="px-6 py-3 font-semibold text-slate-700">Type</th>
+                                                <th className="px-6 py-3 font-semibold text-slate-700">Ref / Category</th>
                                                 <th className="px-6 py-3 font-semibold text-slate-700">Method</th>
-                                                <th className="px-6 py-3 font-semibold text-slate-700">UTR</th>
                                                 <th className="px-6 py-3 font-semibold text-slate-700 text-right">Amount</th>
                                                 <th className="px-6 py-3 font-semibold text-slate-700 text-center">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-100">
-                                            {accounts.flatMap(a => a.transactions.map(t => ({ ...t, accNum: a.accountNumber, accType: a.type })))
-                                                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                                .slice(0, 50)
-                                                .map((t) => (
-                                                    <tr key={t.id} className="hover:bg-slate-50">
-                                                        <td className="px-6 py-3 text-slate-600">{formatDate(t.date)}</td>
-                                                        <td className="px-6 py-3 text-slate-900 font-medium">
-                                                            {t.description}
-                                                            <span className="block text-[10px] text-slate-400">{t.accType} - {t.accNum}</span>
+                                            {(() => {
+                                                const allActivity = [
+                                                    ...accounts.flatMap(a => a.transactions.map(t => ({
+                                                        ...t,
+                                                        ref: `${a.type.split(' ')[0]} - ${a.accountNumber.split('-').pop()}`,
+                                                        itemType: 'transaction' as const,
+                                                        fullAcc: a
+                                                    }))),
+                                                    ...(ledger || []).filter(l => l.memberId === member.id).map(l => ({
+                                                        id: l.id,
+                                                        date: l.date,
+                                                        description: l.description,
+                                                        amount: l.amount,
+                                                        type: l.type === 'Income' ? 'credit' : 'debit',
+                                                        paymentMethod: l.onlineAmount && l.onlineAmount > 0 ? (l.cashAmount && l.cashAmount > 0 ? 'Both' : 'Online') : 'Cash',
+                                                        utrNumber: l.utrNumber,
+                                                        ref: l.category,
+                                                        itemType: 'ledger' as const
+                                                    }))
+                                                ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                                    .slice(0, 50);
+
+                                                if (allActivity.length === 0) {
+                                                    return (
+                                                        <tr>
+                                                            <td colSpan={6} className="px-6 py-12 text-center text-slate-400 italic bg-slate-50/20">
+                                                                No financial records found for this member.
+                                                            </td>
+                                                        </tr>
+                                                    );
+                                                }
+
+                                                return allActivity.map((item) => (
+                                                    <tr key={item.id} className="hover:bg-slate-50 transition-colors group">
+                                                        <td className="px-6 py-4 text-slate-600 font-mono text-xs whitespace-nowrap">{formatDate(item.date)}</td>
+                                                        <td className="px-6 py-4">
+                                                            <div className="text-slate-900 font-semibold">{item.description}</div>
+                                                            {item.utrNumber && <div className="text-[10px] text-slate-400 font-mono mt-0.5">UTR: {item.utrNumber}</div>}
                                                         </td>
-                                                        <td className="px-6 py-3">
-                                                            <span className={`px-2 py-0.5 rounded text-xs font-bold ${t.type === 'credit' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                                                {t.type.toUpperCase()}
+                                                        <td className="px-6 py-4">
+                                                            <span className={`px-2 py-1 rounded-md text-[10px] font-bold uppercase ${item.itemType === 'transaction' ? 'bg-blue-50 text-blue-700 border border-blue-100' : 'bg-purple-50 text-purple-700 border border-purple-100'}`}>
+                                                                {item.ref}
                                                             </span>
                                                         </td>
-                                                        <td className="px-6 py-3 text-slate-500 text-xs">
-                                                            {t.paymentMethod || 'Cash'}
+                                                        <td className="px-6 py-4">
+                                                            <span className="text-xs text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{item.paymentMethod || 'Cash'}</span>
                                                         </td>
-                                                        <td className="px-6 py-3 text-slate-500 text-xs font-mono">
-                                                            {t.utrNumber || '-'}
+                                                        <td className="px-6 py-4 text-right">
+                                                            <div className={`font-mono font-black ${item.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                                                                {item.type === 'credit' ? '+' : '-'}{formatCurrency(item.amount)}
+                                                            </div>
                                                         </td>
-                                                        <td className="px-6 py-3 text-right font-mono font-medium text-slate-700">{formatCurrency(t.amount)}</td>
-                                                        <td className="px-6 py-3 text-center">
-                                                            <button onClick={() => {
-                                                                const acc = accounts.find(a => a.accountNumber === t.accNum);
-                                                                if (acc) printReceipt(t, acc, acc.balance); // Approximate balance for receipt reprint
-                                                            }} className="text-blue-600 hover:underline text-xs">Print</button>
+                                                        <td className="px-6 py-4 text-center">
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (item.itemType === 'transaction') {
+                                                                        printReceipt(item as any, (item as any).fullAcc, (item as any).fullAcc.balance);
+                                                                    } else {
+                                                                        // Custom Receipt for Fees/Ledger
+                                                                        const mockAccount = { type: 'FEE_PAYMENT', accountNumber: 'SOCIETY-LEDGER' } as any;
+                                                                        printReceipt(item as any, mockAccount, 0);
+                                                                    }
+                                                                }}
+                                                                className="opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1 rounded-md text-xs font-bold border border-blue-200"
+                                                            >
+                                                                Print Receipt
+                                                            </button>
                                                         </td>
                                                     </tr>
-                                                ))}
+                                                ));
+                                            })()}
                                         </tbody>
                                     </table>
                                 </div>

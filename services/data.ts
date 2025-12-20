@@ -183,6 +183,7 @@ const mapLedgerFromDB = (l: any): LedgerEntry => ({
 
 const mapLedgerToDB = (l: LedgerEntry) => ({
     id: l.id,
+    member_id: l.memberId || null,
     date: l.date,
     description: l.description,
     amount: l.amount,

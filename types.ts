@@ -153,7 +153,7 @@ export interface Member {
   fullName: string;
   email: string;
   phone: string;
-  fatherName?: string; 
+  fatherName?: string;
   permanentAddress?: string; // Renamed from address
   currentAddress?: string;   // Added
   city?: string; // Added
@@ -174,6 +174,7 @@ export interface Member {
 
 export interface LedgerEntry {
   id: string;
+  memberId?: string; // Optional link to a specific member
   date: string;
   description: string;
   amount: number;
