@@ -203,6 +203,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         setPreviewData(validRows);
     };
 
+    const normalizeDate = (dateStr: string) => {
+        if (!dateStr) return new Date().toISOString().split('T')[0];
+
+        // Handle DD-MM-YYYY or DD/MM/YYYY
+        const parts = dateStr.split(/[-/]/);
+        if (parts.length === 3 && parts[0].length <= 2 && parts[2].length === 4) {
+            // Assume DD-MM-YYYY
+            const day = parts[0].padStart(2, '0');
+            const month = parts[1].padStart(2, '0');
+            const year = parts[2];
+            return `${year}-${month}-${day}`;
+        }
+
+        // Fallback for YYYY-MM-DD or other
+        return dateStr;
+    };
+
     const executeImport = async () => {
         if (previewData.length === 0) return;
         setIsImporting(true);
@@ -221,7 +238,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         const phone = row.phone || row.phonenumber || "";
                         const fullName = row.full_name || row.fullname || row.name || "Unknown Member";
                         const legacyId = row.member_id || row.legacyid || row.id;
-                        const joinDate = row.join_date || row.joindate || new Date().toISOString().split('T')[0];
+                        const joinDate = normalizeDate(row.join_date || row.joindate);
 
                         const newMember: Member = {
                             id: legacyId ? String(legacyId) : `MEM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -253,7 +270,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                         if (linkedMemberId) {
                             const newAcc = createAccount(linkedMemberId, type, balance, undefined, undefined, settings);
-                            const openDate = row.opening_date || row.openingdate || row.opendate || row.date;
+                            const openDate = normalizeDate(row.opening_date || row.openingdate || row.opendate || row.date);
 
                             if (openDate && newAcc.transactions.length > 0) {
                                 newAcc.transactions[0].date = openDate;
@@ -525,7 +542,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.father_name || ''} onFocus={() => setFocusedCell({ row: idx, col: 'father_name' })} onChange={(e) => { const n = [...previewData]; n[idx].father_name = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.phone || ''} onFocus={() => setFocusedCell({ row: idx, col: 'phone' })} onChange={(e) => { const n = [...previewData]; n[idx].phone = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.current_address || ''} onFocus={() => setFocusedCell({ row: idx, col: 'current_address' })} onChange={(e) => { const n = [...previewData]; n[idx].current_address = e.target.value; setPreviewData(n); }} /></td>
-                                                    <td className="border border-slate-200 p-0"><input type="text" placeholder="YYYY-MM-DD" className="w-full h-full p-2 outline-none bg-transparent" value={row.join_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'join_date' })} onChange={(e) => { const n = [...previewData]; n[idx].join_date = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" placeholder="DD-MM-YYYY" className="w-full h-full p-2 outline-none bg-transparent" value={row.join_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'join_date' })} onChange={(e) => { const n = [...previewData]; n[idx].join_date = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.email || ''} onFocus={() => setFocusedCell({ row: idx, col: 'email' })} onChange={(e) => { const n = [...previewData]; n[idx].email = e.target.value; setPreviewData(n); }} /></td>
                                                 </>
                                             ) : (
@@ -537,7 +554,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                         </select>
                                                     </td>
                                                     <td className="border border-slate-200 p-0"><input type="number" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_balance || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_balance' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_balance = e.target.value; setPreviewData(n); }} /></td>
-                                                    <td className="border border-slate-200 p-0"><input type="text" placeholder="YYYY-MM-DD" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_date' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_date = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" placeholder="DD-MM-YYYY" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_date' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_date = e.target.value; setPreviewData(n); }} /></td>
                                                 </>
                                             )}
                                             <td className="p-1 border border-slate-200 text-center">
