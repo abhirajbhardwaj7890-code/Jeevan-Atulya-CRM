@@ -102,12 +102,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         join_date: lookup.joindate || lookup.openingdate || lookup.date || '',
                         email: lookup.email || ''
                     };
-                } else {
+                } else if (importType === 'accounts') {
                     return {
                         member_id: lookup.memberid || lookup.legacyid || '',
                         account_type: lookup.accounttype || lookup.type || 'Optional Deposit',
                         opening_balance: lookup.openingbalance || lookup.balance || lookup.amount || '',
                         opening_date: lookup.openingdate || lookup.date || ''
+                    };
+                } else {
+                    return {
+                        name: lookup.name || lookup.fullname || lookup.staffname || lookup.agentname || '',
+                        phone: lookup.phone || lookup.mobile || lookup.phonenumber || '',
+                        member_id: lookup.memberid || lookup.id || lookup.linkedid || '',
+                        branch_id: lookup.branchid || lookup.branch || lookup.office || 'BR-MAIN',
+                        commission_fee: lookup.commissionfee || lookup.fee || lookup.commission || ''
                     };
                 }
             });
@@ -120,7 +128,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 if (!finalData[targetRowIdx]) {
                     finalData[targetRowIdx] = importType === 'members'
                         ? { member_id: '', full_name: '', father_name: '', phone: '', current_address: '', join_date: '', email: '' }
-                        : { member_id: '', account_type: 'Optional Deposit', opening_balance: '', opening_date: '' };
+                        : (importType === 'accounts'
+                            ? { member_id: '', account_type: 'Optional Deposit', opening_balance: '', opening_date: '' }
+                            : { name: '', phone: '', member_id: '', branch_id: 'BR-MAIN', commission_fee: '' }
+                        );
                 }
 
                 rowValues.forEach((val, cOffset) => {
@@ -172,7 +183,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         validRows.push(mappedRow);
                     }
                 }
-            } else {
+            } else if (importType === 'accounts') {
                 // ... (Accounts remains similar)
                 const memberId = row.memberid || row.networkid || row.mid || row.legacyid;
                 const memberPhone = row.memberphone || row.phone || row.mobile || row.contact;
@@ -196,6 +207,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             _linkedMemberId: linkedMember.id
                         });
                     }
+                }
+            } else {
+                // STAFF VALIDATION
+                const name = row.name || row.fullname || row.staffname || row.agentname;
+                const phone = row.phone || row.mobile || row.phonenumber;
+
+                if (!name || !phone) {
+                    errors.push(`Row ${rowNum}: Skipped - Missing Name or Phone.`);
+                } else {
+                    validRows.push({
+                        name: name,
+                        phone: String(phone),
+                        member_id: row.member_id || row.memberid || row.id || '',
+                        branch_id: row.branch_id || row.branchid || row.branch || 'BR-MAIN',
+                        commission_fee: parseFloat(row.commission_fee || row.fee || row.commission) || settings.defaultAgentFee
+                    });
                 }
             }
         });
@@ -346,8 +373,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         let content = "";
         if (importType === 'members') {
             content = "legacy_id,full_name,phone,join_date,address,father_name,email\n1001,John Doe,9876543210,2022-01-15,123 Main St,Father Doe,john@example.com";
-        } else {
+        } else if (importType === 'accounts') {
             content = "member_phone,account_type,opening_balance,opening_date\n9876543210,Share Capital,500,2022-01-15\n9876543210,Optional Deposit,5000,2022-02-01";
+        } else {
+            content = "name,phone,member_id,branch_id,commission_fee\nStaff Name,9999999999,,BR-MAIN,100";
         }
         const blob = new Blob([content], { type: 'text/csv' });
         const url = URL.createObjectURL(blob);

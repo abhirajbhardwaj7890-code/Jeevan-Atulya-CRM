@@ -66,7 +66,7 @@ const calculateInterest = (balance: number, rate: number, type: AccountType, acc
     return { value: annualInterest };
 };
 
-const RELATION_OPTIONS = ['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Uncle', 'Aunt', 'Nephew', 'Niece', 'Grandfather', 'Grandmother'];
+const RELATION_OPTIONS = ['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Uncle', 'Aunt', 'Nephew', 'Niece', 'Grandfather', 'Grandmother', 'Friend', 'Other'];
 
 export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, accounts, agents = [], interactions, userRole, appSettings, onBack, onAddInteraction, onAddTransaction, onAddAccount, onUpdateMember, onUpdateAccount, onAddLedgerEntry, onOpenPassbook }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'accounts' | 'receipts' | 'documents' | 'crm'>('overview');
@@ -1529,14 +1529,35 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                         {accountForm.type === AccountType.LOAN && (
                                             <div className="border-t pt-4">
                                                 <h4 className="font-bold text-slate-900 text-sm mb-3">Guarantor Details (Required)</h4>
-                                                <div className="space-y-3">
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <input className="border p-2 rounded text-sm" placeholder="Guarantor 1 Name" value={guarantors.g1Name} onChange={e => setGuarantors({ ...guarantors, g1Name: e.target.value })} />
-                                                        <input className="border p-2 rounded text-sm" placeholder="Phone" value={guarantors.g1Phone} onChange={e => setGuarantors({ ...guarantors, g1Phone: e.target.value })} />
+                                                <div className="space-y-4">
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                        <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Guarantor 1 (Primary)</p>
+                                                        <div className="grid grid-cols-2 gap-2 mb-2">
+                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Name" value={guarantors.g1Name} onChange={e => setGuarantors({ ...guarantors, g1Name: e.target.value })} />
+                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Phone" value={guarantors.g1Phone} onChange={e => setGuarantors({ ...guarantors, g1Phone: e.target.value })} />
+                                                        </div>
+                                                        <select
+                                                            className="w-full border p-2 rounded text-sm bg-white"
+                                                            value={guarantors.g1Rel}
+                                                            onChange={e => setGuarantors({ ...guarantors, g1Rel: e.target.value })}
+                                                        >
+                                                            {RELATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                        </select>
                                                     </div>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <input className="border p-2 rounded text-sm" placeholder="Guarantor 2 Name (Optional)" value={guarantors.g2Name} onChange={e => setGuarantors({ ...guarantors, g2Name: e.target.value })} />
-                                                        <input className="border p-2 rounded text-sm" placeholder="Phone" value={guarantors.g2Phone} onChange={e => setGuarantors({ ...guarantors, g2Phone: e.target.value })} />
+
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                        <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Guarantor 2 (Secondary)</p>
+                                                        <div className="grid grid-cols-2 gap-2 mb-2">
+                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Name (Optional)" value={guarantors.g2Name} onChange={e => setGuarantors({ ...guarantors, g2Name: e.target.value })} />
+                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Phone" value={guarantors.g2Phone} onChange={e => setGuarantors({ ...guarantors, g2Phone: e.target.value })} />
+                                                        </div>
+                                                        <select
+                                                            className="w-full border p-2 rounded text-sm bg-white"
+                                                            value={guarantors.g2Rel}
+                                                            onChange={e => setGuarantors({ ...guarantors, g2Rel: e.target.value })}
+                                                        >
+                                                            {RELATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                        </select>
                                                     </div>
                                                 </div>
                                             </div>
@@ -1550,9 +1571,21 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             <CheckCircle size={32} />
                                         </div>
                                         <h4 className="text-xl font-bold text-slate-900">Ready to Create</h4>
-                                        <p className="text-slate-500 text-sm mt-2 mb-6">
+                                        <p className="text-slate-500 text-sm mt-2 mb-2">
                                             You are about to create a <strong>{accountForm.type}</strong> account for {member.fullName} with an opening balance of <strong>{formatCurrency(parseFloat(accountForm.amount) || 0)}</strong>.
                                         </p>
+
+                                        {accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL && (
+                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-left mb-6">
+                                                <p className="text-amber-800 font-bold text-xs uppercase mb-1">One-time Processing Fee: ₹700</p>
+                                                <ul className="text-[10px] text-amber-700 space-y-0.5 list-disc pl-4">
+                                                    <li>Verification Charge: ₹450</li>
+                                                    <li>File Charge: ₹100</li>
+                                                    <li>Affidavit Cost: ₹150</li>
+                                                </ul>
+                                            </div>
+                                        )}
+                                        {!(accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL) && <div className="mb-6"></div>}
                                         <button type="submit" className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-lg">
                                             Confirm Creation
                                         </button>
@@ -1816,6 +1849,200 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                             )}
                             <button type="submit" className="w-full bg-blue-600 text-white py-2 rounded font-bold">Save Changes</button>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Activate Member Modal */}
+            {showActivateModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md overflow-hidden shadow-2xl animate-fade-in relative">
+                        <div className="bg-green-600 px-6 py-4 flex justify-between items-center text-white">
+                            <h3 className="font-bold text-lg">Activate Membership</h3>
+                            <button onClick={() => setShowActivateModal(false)}><X size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="bg-green-50 p-4 rounded-lg flex items-center gap-3">
+                                <div className="p-2 bg-green-100 text-green-600 rounded-full"><Sparkles size={24} /></div>
+                                <div>
+                                    <p className="text-green-800 font-bold">One-time Activation Fee</p>
+                                    <p className="text-green-700 text-xs">Total Payable: ₹1,550</p>
+                                </div>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3 text-xs">
+                                <div className="p-2 bg-slate-50 border rounded">Building Fund: ₹450</div>
+                                <div className="p-2 bg-slate-50 border rounded">Share Money: ₹400</div>
+                                <div className="p-2 bg-slate-50 border rounded">Compulsory Dep: ₹200</div>
+                                <div className="p-2 bg-slate-50 border rounded">Welfare Fund: ₹400</div>
+                                <div className="p-2 bg-slate-50 border rounded">Entry Charge: ₹100</div>
+                            </div>
+
+                            <div className="pt-4 border-t">
+                                <label className="block text-xs font-bold text-slate-500 mb-2">Payment Mode</label>
+                                <div className="flex gap-2">
+                                    {['Cash', 'Online', 'Both'].map(m => (
+                                        <button key={m} onClick={() => setActivateForm({ ...activateForm, paymentMethod: m as any })} className={`flex-1 py-2 text-sm font-bold rounded border ${activateForm.paymentMethod === m ? 'bg-slate-800 text-white' : 'bg-white text-slate-600'}`}>
+                                            {m}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {activateForm.paymentMethod === 'Both' && (
+                                <div className="grid grid-cols-2 gap-4 animate-fade-in">
+                                    <input type="number" placeholder="Cash" className="border p-2 rounded" value={activateForm.cashAmount} onChange={e => setActivateForm({ ...activateForm, cashAmount: e.target.value })} />
+                                    <input type="number" placeholder="Online" className="border p-2 rounded" value={activateForm.onlineAmount} onChange={e => setActivateForm({ ...activateForm, onlineAmount: e.target.value })} />
+                                </div>
+                            )}
+
+                            <button onClick={submitActivation} className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-lg mt-4">
+                                Confirm & Activate
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Document Upload Modal */}
+            {showUploadModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md p-6 relative">
+                        <button onClick={() => setShowUploadModal(false)} className="absolute top-4 right-4 text-slate-400"><X size={20} /></button>
+                        <h3 className="font-bold text-lg mb-4">Upload Document</h3>
+                        <form onSubmit={submitUpload} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 mb-1">Category</label>
+                                <select className="w-full border p-2 rounded" value={uploadForm.category} onChange={e => setUploadForm({ ...uploadForm, category: e.target.value })}>
+                                    <option value="ID Proof">ID Proof</option>
+                                    <option value="Address Proof">Address Proof</option>
+                                    <option value="Photo">Photo</option>
+                                    <option value="Other">Other</option>
+                                </select>
+                            </div>
+                            <input type="file" className="w-full border p-2 rounded" onChange={handleFileChange} />
+                            <textarea className="w-full border p-2 rounded" placeholder="Description" value={uploadForm.description} onChange={e => setUploadForm({ ...uploadForm, description: e.target.value })} />
+                            <button type="submit" disabled={isUploading} className="w-full py-2 bg-blue-600 text-white rounded font-bold">
+                                {isUploading ? 'Uploading...' : 'Upload'}
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Account Modal */}
+            {showEditAccountModal && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl w-full max-w-md p-6 relative">
+                        <button onClick={() => setShowEditAccountModal(false)} className="absolute top-4 right-4 text-slate-400"><X size={20} /></button>
+                        <h3 className="font-bold text-lg mb-4">Edit Account Settings</h3>
+                        <form onSubmit={submitEditAccount} className="space-y-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500">Status</label>
+                                <select className="w-full border p-2 rounded" value={editAccountForm.status} onChange={e => setEditAccountForm({ ...editAccountForm, status: e.target.value })}>
+                                    <option value="Active">Active</option>
+                                    <option value="Dormant">Dormant</option>
+                                    <option value="Closed">Closed</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500">Interest Rate (%)</label>
+                                <input type="number" className="w-full border p-2 rounded" value={editAccountForm.interestRate} onChange={e => setEditAccountForm({ ...editAccountForm, interestRate: e.target.value })} />
+                            </div>
+                            <button type="submit" className="w-full py-2 bg-slate-900 text-white rounded font-bold">Update Account</button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* View Account Modal (Calculators) */}
+            {showAccountViewModal && viewingAccount && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative p-6 shadow-2xl">
+                        <button onClick={() => setShowAccountViewModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={24} /></button>
+
+                        <div className="flex items-center gap-4 mb-8">
+                            <div className={`p-3 rounded-xl ${viewingAccount.type === AccountType.LOAN ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                                <CreditCard size={32} />
+                            </div>
+                            <div>
+                                <h3 className="text-2xl font-bold text-slate-900">{viewingAccount.type}</h3>
+                                <p className="text-slate-500 font-mono">{viewingAccount.accountNumber}</p>
+                            </div>
+                            <div className="ml-auto text-right">
+                                <p className="text-xs font-bold text-slate-400 uppercase">Current Balance</p>
+                                <p className="text-3xl font-black text-slate-900">{formatCurrency(viewingAccount.balance)}</p>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            {/* Projections & Calculators */}
+                            <div className="space-y-6">
+                                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <TrendingUp size={18} className="text-blue-600" />
+                                        <h4 className="font-bold text-slate-900">Forecast Calculator</h4>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Forecast Period (Months)</label>
+                                            <input type="range" min="1" max="60" className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" value={viewForecastMonths} onChange={e => setViewForecastMonths(e.target.value)} />
+                                            <div className="flex justify-between text-[10px] text-slate-400 mt-1"><span>1m</span><span>{viewForecastMonths} months</span><span>60m</span></div>
+                                        </div>
+                                        <div className="bg-white p-3 rounded-lg border border-slate-100 flex justify-between items-center">
+                                            <span className="text-sm font-medium text-slate-600">Projected Interest</span>
+                                            <span className="text-lg font-bold text-green-600">+{formatCurrency((viewingAccount.balance * (viewingAccount.interestRate || 0) / 100) * (parseInt(viewForecastMonths) / 12))}</span>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <Calculator size={18} className="text-blue-700" />
+                                        <h4 className="font-bold text-blue-900">Simulation</h4>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="flex gap-2">
+                                            <button type="button" onClick={() => setViewSimType('deposit')} className={`flex-1 py-1.5 text-xs font-bold rounded ${viewSimType === 'deposit' ? 'bg-blue-700 text-white' : 'bg-white text-blue-700 border border-blue-200'}`}>Deposit</button>
+                                            <button type="button" onClick={() => setViewSimType('withdraw')} className={`flex-1 py-1.5 text-xs font-bold rounded ${viewSimType === 'withdraw' ? 'bg-amber-600 text-white' : 'bg-white text-amber-600 border border-amber-200'}`}>Withdraw</button>
+                                        </div>
+                                        <div className="relative">
+                                            <span className="absolute left-3 top-2.5 text-slate-400">₹</span>
+                                            <input type="number" placeholder="Enter amount..." className="w-full border p-2 pl-7 rounded-lg" value={viewSimAmount} onChange={e => setViewSimAmount(e.target.value)} />
+                                        </div>
+                                        {viewSimAmount && (
+                                            <div className="bg-white p-3 rounded-lg border border-blue-50 flex justify-between items-center animate-pulse">
+                                                <span className="text-sm text-slate-600">New Balance</span>
+                                                <span className="text-lg font-bold text-slate-900">
+                                                    {formatCurrency(viewingAccount.balance + (viewSimType === 'deposit' ? parseFloat(viewSimAmount) || 0 : -(parseFloat(viewSimAmount) || 0)))}
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Account History Snippet */}
+                            <div>
+                                <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                    <History size={18} className="text-slate-400" />
+                                    Recent History
+                                </h4>
+                                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+                                    {viewingAccount.transactions.length > 0 ? viewingAccount.transactions.slice(0, 10).map(t => (
+                                        <div key={t.id} className="p-3 border rounded-lg bg-white hover:bg-slate-50 transition-colors">
+                                            <div className="flex justify-between items-start mb-1">
+                                                <span className="text-xs font-bold text-slate-500 uppercase">{formatDate(t.date)}</span>
+                                                <span className={`text-sm font-bold ${t.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                                                    {t.type === 'credit' ? '+' : '-'}{formatCurrency(t.amount)}
+                                                </span>
+                                            </div>
+                                            <p className="text-xs text-slate-600 truncate">{t.description}</p>
+                                        </div>
+                                    )) : <div className="text-center py-10 text-slate-400 text-sm italic">No transaction history</div>}
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             )}
