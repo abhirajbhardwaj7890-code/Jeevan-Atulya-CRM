@@ -448,6 +448,16 @@ export const upsertMember = async (member: Member) => {
     if (error) throw error;
 };
 
+export const bulkUpsertMembers = async (members: Member[]) => {
+    if (!isSupabaseConfigured()) {
+        for (const m of members) await upsertMember(m);
+        return;
+    }
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('members').upsert(members.map(mapMemberToDB));
+    if (error) throw error;
+};
+
 export const upsertAccount = async (account: Account) => {
     if (!isSupabaseConfigured()) {
         console.log("[Volatile] Saving Account", account.accountNumber);
@@ -458,6 +468,16 @@ export const upsertAccount = async (account: Account) => {
     }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('accounts').upsert(mapAccountToDB(account));
+    if (error) throw error;
+};
+
+export const bulkUpsertAccounts = async (accounts: Account[]) => {
+    if (!isSupabaseConfigured()) {
+        for (const a of accounts) await upsertAccount(a);
+        return;
+    }
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('accounts').upsert(accounts.map(mapAccountToDB));
     if (error) throw error;
 };
 
@@ -500,6 +520,16 @@ export const upsertTransaction = async (transaction: Transaction, accountId: str
     }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').upsert(mapTransactionToDB(transaction, accountId));
+    if (error) throw error;
+};
+
+export const bulkUpsertTransactions = async (txs: { transaction: Transaction, accountId: string }[]) => {
+    if (!isSupabaseConfigured()) {
+        for (const t of txs) await upsertTransaction(t.transaction, t.accountId);
+        return;
+    }
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('transactions').upsert(txs.map(t => mapTransactionToDB(t.transaction, t.accountId)));
     if (error) throw error;
 };
 

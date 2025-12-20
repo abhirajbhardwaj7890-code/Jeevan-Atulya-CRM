@@ -227,89 +227,81 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         setImportLogs([]);
         let count = 0;
         let failCount = 0;
-        const newLogs: { name: string, error: string }[] = [];
 
         try {
-            // Process in BATCHES for speed (Parallelism)
-            const BATCH_SIZE = 10;
-            const rows = [...previewData];
-
-            for (let i = 0; i < rows.length; i += BATCH_SIZE) {
-                const batch = rows.slice(i, i + BATCH_SIZE);
-
-                await Promise.all(batch.map(async (row) => {
-                    try {
-                        if (importType === 'members') {
-                            const phone = row.phone || row.phonenumber || "";
-                            const fullName = row.full_name || row.fullname || row.name || "Unknown Member";
-                            const legacyId = row.member_id || row.legacyid || row.id;
-                            const joinDate = normalizeDate(row.join_date || row.joindate);
-
-                            const newMember: Member = {
-                                id: legacyId ? String(legacyId) : `MEM-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                                fullName: fullName,
-                                phone: String(phone),
-                                email: row.email || "",
-                                fatherName: row.father_name || row.fathername || "",
-                                currentAddress: row.current_address || row.address || "",
-                                permanentAddress: row.current_address || row.address || "",
-                                joinDate: joinDate,
-                                status: 'Active',
-                                avatarUrl: `https://ui-avatars.com/api/?name=${fullName.replace(' ', '+')}`,
-                                riskScore: 0
-                            };
-                            await upsertMember(newMember);
-                        } else {
-                            let type = AccountType.OPTIONAL_DEPOSIT;
-                            const inputType = (row.account_type || row.accounttype || row.type || '').toLowerCase();
-
-                            if (inputType.includes('share')) type = AccountType.SHARE_CAPITAL;
-                            else if (inputType.includes('compulsory')) type = AccountType.COMPULSORY_DEPOSIT;
-                            else if (inputType.includes('fixed')) type = AccountType.FIXED_DEPOSIT;
-                            else if (inputType.includes('recurring')) type = AccountType.RECURRING_DEPOSIT;
-                            else if (inputType.includes('loan')) type = AccountType.LOAN;
-
-                            const balValue = row.opening_balance || row.openingbalance || row.balance || row.amount || '0';
-                            const balance = parseFloat(String(balValue));
-                            const linkedMemberId = row.member_id || row.memberid || row._linkedMemberId;
-
-                            if (linkedMemberId) {
-                                const newAcc = createAccount(linkedMemberId, type, balance, undefined, undefined, settings);
-                                const openDate = normalizeDate(row.opening_date || row.openingdate || row.opendate || row.date);
-
-                                if (openDate && newAcc.transactions.length > 0) {
-                                    newAcc.transactions[0].date = openDate;
-                                    newAcc.transactions[0].description = "Opening Balance (Imported)";
-                                }
-
-                                await upsertAccount(newAcc);
-                                await upsertTransaction(newAcc.transactions[0], newAcc.id);
-                            }
-                        }
-                        count++;
-                    } catch (err: any) {
-                        const errorMsg = err.message || JSON.stringify(err);
-                        console.error(`Row Import Failed: ${row.full_name || row.member_id}`, err);
-                        newLogs.push({ name: row.full_name || row.member_id || `Row ${i + batch.indexOf(row) + 1}`, error: errorMsg });
-                        failCount++;
-                    }
+            if (importType === 'members') {
+                const membersToImport: Member[] = previewData.map(row => ({
+                    id: row.member_id ? String(row.member_id) : `MEM-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+                    fullName: row.full_name || "Unknown Member",
+                    phone: String(row.phone || ""),
+                    email: row.email || "",
+                    fatherName: row.father_name || "",
+                    currentAddress: row.current_address || row.address || "",
+                    permanentAddress: row.current_address || row.address || "",
+                    joinDate: normalizeDate(row.join_date),
+                    status: 'Active',
+                    avatarUrl: `https://ui-avatars.com/api/?name=${(row.full_name || "Unknown").replace(' ', '+')}`,
+                    riskScore: 0
                 }));
-            }
 
-            setImportLogs(newLogs);
+                try {
+                    await bulkUpsertMembers(membersToImport);
+                    count = membersToImport.length;
+                } catch (err: any) {
+                    console.error("Bulk Member Import Failed", err);
+                    setImportLogs([{ name: "All Records", error: err.message || "Database rejected bulk import. Possible duplicate ID or missing data." }]);
+                    failCount = membersToImport.length;
+                }
+            } else {
+                const accountsToImport: Account[] = [];
+                const txsToImport: { transaction: Transaction, accountId: string }[] = [];
+
+                previewData.forEach(row => {
+                    let type = AccountType.OPTIONAL_DEPOSIT;
+                    const inputType = (row.account_type || '').toLowerCase();
+                    if (inputType.includes('share')) type = AccountType.SHARE_CAPITAL;
+                    else if (inputType.includes('compulsory')) type = AccountType.COMPULSORY_DEPOSIT;
+                    else if (inputType.includes('fixed')) type = AccountType.FIXED_DEPOSIT;
+                    else if (inputType.includes('recurring')) type = AccountType.RECURRING_DEPOSIT;
+                    else if (inputType.includes('loan')) type = AccountType.LOAN;
+
+                    const balance = parseFloat(String(row.opening_balance || '0'));
+                    const memberId = row.member_id || row._linkedMemberId;
+
+                    if (memberId) {
+                        const newAcc = createAccount(memberId, type, balance, undefined, undefined, settings);
+                        const openDate = normalizeDate(row.opening_date);
+                        if (openDate && newAcc.transactions.length > 0) {
+                            newAcc.transactions[0].date = openDate;
+                            newAcc.transactions[0].description = "Opening Balance (Imported)";
+                        }
+                        accountsToImport.push(newAcc);
+                        txsToImport.push({ transaction: newAcc.transactions[0], accountId: newAcc.id });
+                    }
+                });
+
+                try {
+                    await bulkUpsertAccounts(accountsToImport);
+                    await bulkUpsertTransactions(txsToImport);
+                    count = accountsToImport.length;
+                } catch (err: any) {
+                    console.error("Bulk Account Import Failed", err);
+                    setImportLogs([{ name: "All Records", error: err.message || "Bulk import failed. Ensure all Member IDs exist in the database first." }]);
+                    failCount = accountsToImport.length;
+                }
+            }
 
             setSuccessCount(count);
-            setPreviewData([]);
-            setPage(1);
-            setValidationErrors([]);
-            if (onImportSuccess) onImportSuccess();
-
-            if (failCount > 0) {
-                alert(`Import finished: ${count} successful, ${failCount} failed. Check browser console for database errors!`);
-            } else {
+            if (failCount === 0) {
+                setPreviewData([]);
+                setPage(1);
+                setValidationErrors([]);
+                if (onImportSuccess) onImportSuccess();
                 alert(`Successfully imported ${count} records!`);
+            } else {
+                alert(`Import failed. See the "Failed Records" section below for details.`);
             }
-        } catch (err) {
+        } catch (err: any) {
             console.error(err);
             alert("Critical error during import procedure. Check console.");
         } finally {
