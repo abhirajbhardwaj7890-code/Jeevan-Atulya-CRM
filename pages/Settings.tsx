@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AppSettings, Member, AccountType, Account, AccountStatus } from '../types';
+import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction } from '../types';
 import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions } from '../services/data';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -205,19 +205,29 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     };
 
     const normalizeDate = (dateStr: string) => {
-        if (!dateStr) return new Date().toISOString().split('T')[0];
+        if (!dateStr || dateStr.trim() === "") return new Date().toISOString().split('T')[0];
 
-        // Handle DD-MM-YYYY or DD/MM/YYYY
-        const parts = dateStr.split(/[-/]/);
-        if (parts.length === 3 && parts[0].length <= 2 && parts[2].length === 4) {
-            // Assume DD-MM-YYYY
-            const day = parts[0].padStart(2, '0');
-            const month = parts[1].padStart(2, '0');
-            const year = parts[2];
-            return `${year}-${month}-${day}`;
+        // Replace all common separators with a standard one
+        const cleanStr = dateStr.replace(/[./]/g, '-');
+        const parts = cleanStr.split('-');
+
+        if (parts.length === 3) {
+            let day = parts[0].padStart(2, '0');
+            let month = parts[1].padStart(2, '0');
+            let year = parts[2];
+
+            // Handle 2-digit years
+            if (year.length === 2) {
+                const prefix = parseInt(year) > 50 ? '19' : '20';
+                year = prefix + year;
+            }
+
+            // Ensure YYYY-MM-DD
+            if (day.length === 2 && month.length === 2 && year.length === 4) {
+                return `${year}-${month}-${day}`;
+            }
         }
 
-        // Fallback for YYYY-MM-DD or other
         return dateStr;
     };
 
