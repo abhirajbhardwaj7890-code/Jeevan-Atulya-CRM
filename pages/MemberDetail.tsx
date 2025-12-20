@@ -14,6 +14,9 @@ interface MemberDetailProps {
     onBack: () => void;
     onAddInteraction: (note: Partial<Interaction>) => void;
     onAddTransaction: (accountId: string, transaction: Partial<Transaction>) => void;
+    onAddAccount: (memberId: string, account: Partial<Account>) => void;
+    onUpdateMember: (member: Member) => void;
+    onUpdateAccount: (account: Account) => void;
     onAddLedgerEntry: (entry: LedgerEntry) => void;
     onOpenPassbook: () => void;
     ledger?: LedgerEntry[]; // Added to show member-related fees/fines
@@ -66,7 +69,7 @@ const calculateInterest = (balance: number, rate: number, type: AccountType, acc
 
 const RELATION_OPTIONS = ['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Uncle', 'Aunt', 'Nephew', 'Niece', 'Grandfather', 'Grandmother', 'Friend', 'Other'];
 
-export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, accounts, agents = [], interactions, userRole, appSettings, onBack, onAddInteraction, onAddTransaction, onAddAccount, onUpdateMember, onUpdateAccount, onAddLedgerEntry, onOpenPassbook }) => {
+export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, accounts, agents = [], interactions, userRole, appSettings, onBack, onAddInteraction, onAddTransaction, onAddAccount, onUpdateMember, onUpdateAccount, onAddLedgerEntry, onOpenPassbook, ledger = [] }) => {
     const [activeTab, setActiveTab] = useState<'overview' | 'accounts' | 'receipts' | 'documents' | 'crm'>('overview');
     const [aiSummary, setAiSummary] = useState<string>('');
     const [loadingAi, setLoadingAi] = useState(false);

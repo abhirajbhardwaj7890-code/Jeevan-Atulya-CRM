@@ -83,9 +83,9 @@ CREATE TABLE IF NOT EXISTS interactions (
 );
 
 -- ============================================
--- LEDGER ENTRIES TABLE (Accounting)
+-- SOCIETY LEDGER TABLE (Accounting)
 -- ============================================
-CREATE TABLE IF NOT EXISTS ledger_entries (
+CREATE TABLE IF NOT EXISTS society_ledger (
     id TEXT PRIMARY KEY,
     member_id TEXT REFERENCES members(id) ON DELETE CASCADE,
     date DATE NOT NULL,
@@ -95,6 +95,7 @@ CREATE TABLE IF NOT EXISTS ledger_entries (
     category TEXT NOT NULL,
     cash_amount NUMERIC(15,2),
     online_amount NUMERIC(15,2),
+    utr_number TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
@@ -152,8 +153,8 @@ CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
 CREATE INDEX IF NOT EXISTS idx_interactions_member ON interactions(member_id);
 CREATE INDEX IF NOT EXISTS idx_interactions_date ON interactions(date);
 
-CREATE INDEX IF NOT EXISTS idx_ledger_date ON ledger_entries(date);
-CREATE INDEX IF NOT EXISTS idx_ledger_type ON ledger_entries(type);
+CREATE INDEX IF NOT EXISTS idx_ledger_date ON society_ledger(date);
+CREATE INDEX IF NOT EXISTS idx_ledger_type ON society_ledger(type);
 
 -- ============================================
 -- ROW LEVEL SECURITY (Enable if needed)
@@ -173,12 +174,15 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS update_members_updated_at ON members;
 CREATE TRIGGER update_members_updated_at BEFORE UPDATE ON members
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_accounts_updated_at ON accounts;
 CREATE TRIGGER update_accounts_updated_at BEFORE UPDATE ON accounts
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
+DROP TRIGGER IF EXISTS update_settings_updated_at ON app_settings;
 CREATE TRIGGER update_settings_updated_at BEFORE UPDATE ON app_settings
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
