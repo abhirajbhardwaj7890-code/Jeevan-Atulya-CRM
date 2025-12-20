@@ -557,6 +557,16 @@ export const upsertAgent = async (agent: Agent) => {
     if (error) throw error;
 };
 
+export const bulkUpsertAgents = async (agents: Agent[]) => {
+    if (!isSupabaseConfigured()) {
+        for (const a of agents) await upsertAgent(a);
+        return;
+    }
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('agents').upsert(agents.map(mapAgentToDB));
+    if (error) throw error;
+};
+
 export const saveSettings = async (settings: AppSettings) => {
     if (!isSupabaseConfigured()) {
         const cache = getMemoryCache();

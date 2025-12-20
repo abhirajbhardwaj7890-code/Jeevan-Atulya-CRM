@@ -848,6 +848,21 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             originalAmount: openingBalance,
             guarantors: finalGuarantors
         });
+
+        // LOAN FEES LOGIC (700rs for Personal Loans)
+        if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL) {
+            onAddLedgerEntry({
+                id: `LDG-FEES-${Date.now()}`,
+                date: new Date().toISOString().split('T')[0],
+                description: `Loan Fees (Personal) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
+                amount: 700,
+                type: 'Income',
+                category: 'Loan Processing Fees',
+                cashAmount: 700, // Default to cash
+                onlineAmount: 0
+            });
+        }
+
         setShowAccountModal(false);
         setAccountWizardStep(1);
         setAccountForm(prev => ({ ...prev, amount: '0', purpose: '' }));

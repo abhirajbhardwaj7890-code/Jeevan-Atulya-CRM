@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction } from '../types';
-import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions } from '../services/data';
+import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertAgents, MOCK_BRANCHES } from '../services/data';
+import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent } from '../types';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -17,7 +17,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const [isSaving, setIsSaving] = useState(false);
 
     // Import State
-    const [importType, setImportType] = useState<'members' | 'accounts'>('members');
+    const [importType, setImportType] = useState<'members' | 'accounts' | 'staff'>('members');
     const [previewData, setPreviewData] = useState<any[]>([]);
     const [page, setPage] = useState(1);
     const pageSize = 50;
@@ -53,6 +53,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     // --- Import Logic ---
     const MEMBER_COLS = ['member_id', 'full_name', 'father_name', 'phone', 'current_address', 'join_date', 'email'];
     const ACCOUNT_COLS = ['member_id', 'account_type', 'opening_balance', 'opening_date'];
+    const STAFF_COLS = ['name', 'phone', 'member_id', 'branch_id', 'commission_fee'];
 
     const handlePaste = (text: string) => {
         if (!text.trim()) return;
@@ -60,7 +61,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         const lines = text.split('\n').filter(l => l.trim());
         if (lines.length === 0) return;
 
-        const cols = importType === 'members' ? MEMBER_COLS : ACCOUNT_COLS;
+        const cols = importType === 'members' ? MEMBER_COLS : (importType === 'accounts' ? ACCOUNT_COLS : STAFF_COLS);
 
         // Determine start position
         let startRow = focusedCell?.row ?? (previewData.length > 0 ? 0 : 0);
@@ -262,7 +263,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     setImportLogs([{ name: "All Records", error: err.message || "Database rejected bulk import. Possible duplicate ID or missing data." }]);
                     failCount = membersToImport.length;
                 }
-            } else {
+            } else if (importType === 'accounts') {
                 const accountsToImport: Account[] = [];
                 const txsToImport: { transaction: Transaction, accountId: string }[] = [];
 
@@ -298,6 +299,28 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     console.error("Bulk Account Import Failed", err);
                     setImportLogs([{ name: "All Records", error: err.message || "Bulk import failed. Ensure all Member IDs exist in the database first." }]);
                     failCount = accountsToImport.length;
+                }
+            } else {
+                // STAFF IMPORT
+                const agentsToImport: any[] = previewData.map(row => ({
+                    id: `AG-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                    name: row.name || "Unknown Staff",
+                    phone: String(row.phone || ""),
+                    memberId: row.member_id || "",
+                    branchId: row.branch_id || (MOCK_BRANCHES[0]?.id || "BR-MAIN"),
+                    commissionFee: parseFloat(row.commission_fee) || settings.defaultAgentFee,
+                    status: 'Active',
+                    activeMembers: 0,
+                    totalCollections: 0
+                }));
+
+                try {
+                    await bulkUpsertAgents(agentsToImport);
+                    count = agentsToImport.length;
+                } catch (err: any) {
+                    console.error("Bulk Staff Import Failed", err);
+                    setImportLogs([{ name: "All Records", error: err.message || "Staff import failed. Ensure Member IDs are correct." }]);
+                    failCount = agentsToImport.length;
                 }
             }
 
@@ -434,16 +457,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         </div>
                         <div className="flex bg-white rounded-lg border border-blue-200 p-1">
                             <button
-                                onClick={() => { setImportType('members'); setPreviewData([]); }}
-                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'members' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                                onClick={() => { setImportType('members'); setPreviewData([]); setPage(1); }}
+                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'members' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
                             >
                                 Members
                             </button>
                             <button
-                                onClick={() => { setImportType('accounts'); setPreviewData([]); }}
-                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'accounts' ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                                onClick={() => { setImportType('accounts'); setPreviewData([]); setPage(1); }}
+                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'accounts' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
                             >
                                 Accounts
+                            </button>
+                            <button
+                                onClick={() => { setImportType('staff'); setPreviewData([]); setPage(1); }}
+                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'staff' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                Staff/Agents
                             </button>
                         </div>
                     </div>
@@ -507,7 +536,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                     onClick={() => {
                                         const newRow = importType === 'members'
                                             ? { member_id: '', full_name: '', father_name: '', phone: '', current_address: '', join_date: '', email: '' }
-                                            : { member_id: '', account_type: 'Optional Deposit', opening_balance: '', opening_date: '' };
+                                            : importType === 'accounts'
+                                                ? { member_id: '', account_type: 'Optional Deposit', opening_balance: '', opening_date: '' }
+                                                : { name: '', phone: '', member_id: '', branch_id: '', commission_fee: '' };
                                         setPreviewData([...previewData, newRow]);
                                     }}
                                     className="px-3 py-1 bg-white border border-slate-300 rounded hover:bg-slate-50 text-slate-700 font-medium flex items-center gap-1"
@@ -548,12 +579,20 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 <th className="p-2 border border-slate-200 min-w-[100px]">Join Date</th>
                                                 <th className="p-2 border border-slate-200 min-w-[150px]">Email</th>
                                             </>
-                                        ) : (
+                                        ) : importType === 'accounts' ? (
                                             <>
                                                 <th className="p-2 border border-slate-200 min-w-[100px]">Member ID</th>
                                                 <th className="p-2 border border-slate-200 min-w-[150px]">Account Type</th>
                                                 <th className="p-2 border border-slate-200 min-w-[100px]">Balance</th>
                                                 <th className="p-2 border border-slate-200 min-w-[100px]">Open Date</th>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <th className="p-2 border border-slate-200 min-w-[150px]">Staff Name</th>
+                                                <th className="p-2 border border-slate-200 min-w-[120px]">Phone</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Linked Member ID</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Branch ID</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Comm. Fee</th>
                                             </>
                                         )}
                                         <th className="p-2 border border-slate-200 w-10"></th>
@@ -582,7 +621,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                     <td className="border border-slate-200 p-0"><input type="text" placeholder="DD-MM-YYYY" className="w-full h-full p-2 outline-none bg-transparent" value={row.join_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'join_date' })} onChange={(e) => { const n = [...previewData]; n[idx].join_date = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.email || ''} onFocus={() => setFocusedCell({ row: idx, col: 'email' })} onChange={(e) => { const n = [...previewData]; n[idx].email = e.target.value; setPreviewData(n); }} /></td>
                                                 </>
-                                            ) : (
+                                            ) : importType === 'accounts' ? (
                                                 <>
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.member_id || ''} onFocus={() => setFocusedCell({ row: idx, col: 'member_id' })} onChange={(e) => { const n = [...previewData]; n[idx].member_id = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0">
@@ -592,6 +631,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                     </td>
                                                     <td className="border border-slate-200 p-0"><input type="number" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_balance || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_balance' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_balance = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0"><input type="text" placeholder="DD-MM-YYYY" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_date' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_date = e.target.value; setPreviewData(n); }} /></td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.name || ''} onFocus={() => setFocusedCell({ row: idx, col: 'name' })} onChange={(e) => { const n = [...previewData]; n[idx].name = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.phone || ''} onFocus={() => setFocusedCell({ row: idx, col: 'phone' })} onChange={(e) => { const n = [...previewData]; n[idx].phone = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.member_id || ''} onFocus={() => setFocusedCell({ row: idx, col: 'member_id' })} onChange={(e) => { const n = [...previewData]; n[idx].member_id = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.branch_id || ''} onFocus={() => setFocusedCell({ row: idx, col: 'branch_id' })} onChange={(e) => { const n = [...previewData]; n[idx].branch_id = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="number" className="w-full h-full p-2 outline-none bg-transparent" value={row.commission_fee || ''} onFocus={() => setFocusedCell({ row: idx, col: 'commission_fee' })} onChange={(e) => { const n = [...previewData]; n[idx].commission_fee = e.target.value; setPreviewData(n); }} /></td>
                                                 </>
                                             )}
                                             <td className="p-1 border border-slate-200 text-center">
@@ -607,7 +654,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                                     {previewData.length > page * pageSize && (
                                         <tr>
-                                            <td colSpan={importType === 'members' ? 8 : 5} className="p-4 text-center">
+                                            <td colSpan={importType === 'members' ? 8 : (importType === 'accounts' ? 5 : 6)} className="p-4 text-center">
                                                 <button
                                                     onClick={() => setPage(p => p + 1)}
                                                     className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-bold text-xs"
