@@ -441,10 +441,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const shareAcc = accounts.find(a => a.type === AccountType.SHARE_CAPITAL);
     const cdAcc = accounts.find(a => a.type === AccountType.COMPULSORY_DEPOSIT);
     
-    // Use form values if passed (e.g. during activation), else existing account values or defaults
+    // IMPORTANT: Registration receipt should ALWAYS show original registration amounts, not current balances
+    // Use originalAmount (set during activation) or fallback to form values during initial activation
     const fees = { building: 450, welfare: 400, entry: 100 };
-    const smAmount = shareAcc?.originalAmount || shareAcc?.balance || activateForm.shareMoney; 
-    const cdAmount = cdAcc?.originalAmount || cdAcc?.balance || activateForm.compulsoryDeposit; 
+    const smAmount = shareAcc?.originalAmount ?? activateForm.shareMoney ?? 0; 
+    const cdAmount = cdAcc?.originalAmount ?? activateForm.compulsoryDeposit ?? 0; 
     
     const totalAmount = overrideAmount || (fees.building + fees.welfare + fees.entry + smAmount + cdAmount);
     const amountInWords = numberToWords(totalAmount);
