@@ -109,6 +109,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const [editMemberTab, setEditMemberTab] = useState<'profile' | 'contact' | 'nominee'>('profile');
     const [editMemberForm, setEditMemberForm] = useState<Partial<Member>>({});
     const [editNomineeForm, setEditNomineeForm] = useState<Partial<Nominee>>({});
+    const [isLockedAccount, setIsLockedAccount] = useState(false);
 
     // Edit Account Modal State
     const [showEditAccountModal, setShowEditAccountModal] = useState(false);
@@ -727,44 +728,129 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             paymentDetails += ` UTR:${tx.utrNumber}`;
         }
 
-        const getReceipt = () => `
-        <div class="receipt-box">
-            <div class="watermark">ATULYA</div>
-            <div class="header">
-                <div class="reg-no">Reg. No.: 10954</div>
-                <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
-                <div class="org-contact">Ph: 9911770293 , 9911773542</div>
-            </div>
-            <div class="tx-header">
-                <h3>TRANSACTION RECEIPT</h3>
-            </div>
-            <div class="row"><span class="label">Date:</span><span class="val">${dateStr}</span></div>
-            <div class="row"><span class="label">Receipt No:</span><span class="val">${tx.id}</span></div>
-            
-            <div class="divider"></div>
-            
-            <div class="row"><span class="label">Member Name:</span><span class="val">${mem.fullName}</span></div>
-            <div class="row"><span class="label">Father/Husband:</span><span class="val">${mem.fatherName || '-'}</span></div>
-            <div class="row"><span class="label">Member ID:</span><span class="val">${mem.id}</span></div>
-            <div class="row"><span class="label">Account No:</span><span class="val">${acc.accountNumber}</span></div>
-            <div class="row"><span class="label">Account Type:</span><span class="val">${acc.type}</span></div>
-            
-            <div class="divider"></div>
-            
-            <div class="row"><span class="label">Tx Type:</span><span class="val" style="text-transform: uppercase;">${tx.type}</span></div>
-            <div class="row"><span class="label">Description:</span><span class="val">${tx.description}</span></div>
-            <div class="row" style="margin-top: 5px; font-size: 14px;"><span class="label">Amount:</span><span class="val" style="font-weight: bold;">${formatCurrency(tx.amount)}</span></div>
-            <div class="row"><span class="label">Method:</span><span class="val" style="font-size: 9px;">${paymentDetails}</span></div>
-            
-            <div class="divider"></div>
-            
-            <div class="row"><span class="label">Available Balance:</span><span class="val" style="font-weight: bold;">${formatCurrency(balanceAfter)}</span></div>
-            
-            <div class="footer">
-                <div class="sig-line">Authorized Signatory</div>
-            </div>
-        </div>
-    `;
+        const isRD = acc.type === AccountType.RECURRING_DEPOSIT;
+        const isLoan = acc.type === AccountType.LOAN;
+
+        // Recipient Summary (Other accounts)
+        const otherAccs = accounts.filter(a => a.id !== acc.id);
+        const accSummaries = otherAccs.map(a => `${a.accountNumber.split('-').pop()} ${a.balance} ${a.type === AccountType.LOAN ? 'Dr' : 'Cr'}`).join(' ');
+
+        const getReceipt = () => {
+            if (isRD) {
+                // RD/DD Format
+                return `
+                <div class="receipt-box rd-receipt">
+                    <div class="header">
+                        <div class="reg-no">REG.NO-10954</div>
+                        <div class="org-contact">9911770293, 9911773542</div>
+                        <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
+                        <div class="org-address">E-287/8, PUL PEHLADPUR, DELHI-110044</div>
+                        <div class="receipt-title">RECEIPT <span style="font-size: 8px; font-weight: normal; margin-left: 10px;">Office Copy</span></div>
+                    </div>
+
+                    <div class="info-grid">
+                        <div class="info-row"><span>Receipt No.</span> : <strong>${tx.id.split('-').pop()}</strong></div>
+                        <div class="info-row"><span>Rcpt.Date:</span> : ${dateStr}</div>
+                        <div class="info-row"><span>Recd. from</span> : ${mem.fullName.toUpperCase()}</div>
+                        <div class="info-row"><span>M.No.</span> : ${mem.id.split('-').pop()}</div>
+                        <div class="info-row"><span>F/H Name</span> : ${mem.fatherName || '-'}</div>
+                        <div class="info-row"><span>Recd. Mode</span> : By ${tx.paymentMethod || 'Cash'}</div>
+                    </div>
+
+                    <table class="particulars-table">
+                        <thead>
+                            <tr>
+                                <th>Particulars</th>
+                                <th style="text-align: right;">Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td style="font-size: 9px; line-height: 1.2;">
+                                    ${acc.accountNumber} Rate: ${acc.interestRate || 0}% Dep.Amt: ${acc.originalAmount || 0}<br/>
+                                    ${acc.rdFrequency || 'Daily'} Installment
+                                </td>
+                                <td style="text-align: right; vertical-align: top;">${tx.amount.toFixed(2)}</td>
+                            </tr>
+                            <tr class="total-row">
+                                <td style="text-align: right; border-top: 1px solid #000;">Total</td>
+                                <td style="text-align: right; border-top: 1px solid #000; font-weight: bold;">${tx.amount.toFixed(2)}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+
+                    <div class="amount-words">${numberToWords(tx.amount)} Rupees only</div>
+
+                    <div class="society-name">For JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
+
+                    <div class="signature-block">
+                        <div class="sig-title">Cashier Signature</div>
+                        <div class="sig-title">Administrator</div>
+                    </div>
+
+                    <div class="other-balances">${accSummaries}</div>
+                    <div class="nice-day">Have a Nice Day</div>
+                </div>`;
+            }
+
+            if (isLoan) {
+                // Loan Receipt Format
+                return `
+                <div class="receipt-box loan-receipt">
+                    <div class="header">
+                        <div class="reg-no">Reg. No.: 10954</div>
+                        <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
+                        <div class="org-contact">Ph: 9911770293 , 9911773542</div>
+                    </div>
+                    <div class="tx-header">
+                        <h3>LOAN REPAYMENT RECEIPT</h3>
+                    </div>
+                    <div class="row"><span class="label">Date:</span><span class="val">${dateStr}</span></div>
+                    <div class="row"><span class="label">Receipt No:</span><span class="val">${tx.id}</span></div>
+                    <div class="divider"></div>
+                    <div class="row"><span class="label">Member Name:</span><span class="val">${mem.fullName}</span></div>
+                    <div class="row"><span class="label">Loan Account:</span><span class="val">${acc.accountNumber}</span></div>
+                    <div class="row"><span class="label">Loan Type:</span><span class="val">${acc.loanType || 'Personal'}</span></div>
+                    <div class="divider"></div>
+                    <div class="row"><span class="label">Repayment Amount:</span><span class="val" style="font-weight: bold;">${formatCurrency(tx.amount)}</span></div>
+                    <div class="row"><span class="label">Payment Mode:</span><span class="val">${paymentDetails}</span></div>
+                    <div class="divider"></div>
+                    <div class="row"><span class="label">Remaining Principal:</span><span class="val" style="font-weight: bold;">${formatCurrency(balanceAfter)}</span></div>
+                    <div class="footer">
+                        <div class="sig-line">Authorized Signatory</div>
+                    </div>
+                </div>`;
+            }
+
+            // Standard General Format
+            return `
+            <div class="receipt-box">
+                <div class="watermark">ATULYA</div>
+                <div class="header">
+                    <div class="reg-no">Reg. No.: 10954</div>
+                    <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
+                    <div class="org-contact">Ph: 9911770293 , 9911773542</div>
+                </div>
+                <div class="tx-header">
+                    <h3>TRANSACTION RECEIPT</h3>
+                </div>
+                <div class="row"><span class="label">Date:</span><span class="val">${dateStr}</span></div>
+                <div class="row"><span class="label">Receipt No:</span><span class="val">${tx.id}</span></div>
+                <div class="divider"></div>
+                <div class="row"><span class="label">Member Name:</span><span class="val">${mem.fullName}</span></div>
+                <div class="row"><span class="label">Account Number:</span><span class="val">${acc.accountNumber}</span></div>
+                <div class="row"><span class="label">Account Type:</span><span class="val">${acc.type}</span></div>
+                <div class="divider"></div>
+                <div class="row"><span class="label">Tx Type:</span><span class="val" style="text-transform: uppercase;">${tx.type}</span></div>
+                <div class="row"><span class="label">Amount:</span><span class="val" style="font-weight: bold;">${formatCurrency(tx.amount)}</span></div>
+                <div class="row"><span class="label">Method:</span><span class="val" style="font-size: 9px;">${paymentDetails}</span></div>
+                <div class="divider"></div>
+                <div class="row"><span class="label">Available Balance:</span><span class="val" style="font-weight: bold;">${formatCurrency(balanceAfter)}</span></div>
+                <div class="footer">
+                    <div class="sig-line">Authorized Signatory</div>
+                </div>
+            </div>`;
+        };
 
         return `
     <html>
@@ -778,6 +864,28 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
           .receipt-copy { margin-bottom: 20px; border-bottom: 1px dashed #333; padding-bottom: 20px; }
           .receipt-copy:last-child { border-bottom: none; margin-bottom: 0; }
           .receipt-box { border: 1px solid #000; padding: 15px; background: #fff; position: relative; }
+          
+          /* RD Receipt Styles */
+          .rd-receipt { padding: 10px; font-family: 'Courier New', Courier, monospace; }
+          .rd-receipt .header { border-bottom: 1px solid #000; padding-bottom: 5px; margin-bottom: 8px; }
+          .rd-receipt .reg-no { font-size: 10px; position: static; text-align: left; }
+          .rd-receipt .org-contact { font-size: 10px; text-align: right; margin-top: -12px; }
+          .rd-receipt .org-name { font-size: 11px; margin-top: 5px; border: none; }
+          .rd-receipt .org-address { font-size: 8px; text-align: center; font-weight: bold; margin-bottom: 5px; }
+          .rd-receipt .receipt-title { text-align: center; font-size: 14px; font-weight: bold; text-decoration: underline; margin-top: 5px; }
+          .rd-receipt .info-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 2px 10px; margin-bottom: 8px; font-size: 10px; }
+          .rd-receipt .info-row { display: flex; }
+          .rd-receipt .info-row span { min-width: 65px; }
+          .rd-receipt .particulars-table { width: 100%; border-collapse: collapse; margin-bottom: 5px; font-size: 10px; }
+          .rd-receipt .particulars-table th { border-bottom: 1px solid #000; border-top: 1px solid #000; text-align: left; padding: 2px; }
+          .rd-receipt .particulars-table td { padding: 2px; }
+          .rd-receipt .amount-words { font-size: 9px; font-style: italic; margin-bottom: 15px; border-bottom: 1px solid #000; }
+          .rd-receipt .society-name { font-size: 9px; font-weight: bold; text-align: center; margin-bottom: 20px; }
+          .rd-receipt .signature-block { display: flex; justify-content: flex-end; gap: 40px; margin-bottom: 10px; }
+          .rd-receipt .sig-title { font-size: 10px; font-weight: bold; text-align: center; border-top: 1px solid #000; padding-top: 2px; min-width: 80px; }
+          .rd-receipt .other-balances { font-size: 8px; border-top: 1px solid #000; padding-top: 2px; margin-bottom: 2px; }
+          .rd-receipt .nice-day { text-align: center; font-size: 10px; border-top: 1px solid #000; padding-top: 2px; }
+
           .header { text-align: center; margin-bottom: 10px; position: relative; }
           .reg-no { font-size: 9px; position: absolute; top: -5px; left: 0; font-weight: bold; }
           .org-name { font-size: 12px; font-weight: bold; text-transform: uppercase; margin-top: 10px; }
@@ -818,6 +926,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         const account = accounts.find(a => a.id === transForm.accountId);
         if (!account) return;
+        // Disallow transactions on pending loan accounts
+        if (account.type === AccountType.LOAN && account.status === AccountStatus.PENDING) {
+            alert('Cannot process transactions on a pending loan account.');
+            return;
+        }
 
         // Calculate Amount
         let amt = 0;
@@ -839,6 +952,53 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         */
 
         const type = transForm.type as 'credit' | 'debit';
+
+        // ACCOUNT SPECIFIC GUARDS
+        const isLoan = account.type === AccountType.LOAN;
+        const isFD = account.type === AccountType.FIXED_DEPOSIT;
+        const isRD = account.type === AccountType.RECURRING_DEPOSIT;
+        const isCD = account.type === AccountType.COMPULSORY_DEPOSIT;
+
+        // 1. Guard: Withdrawals blocked for Loan, FD, RD, CD
+        if (type === 'debit' && (isLoan || isFD || isRD || isCD)) {
+            alert(`Withdrawals are not allowed for ${account.type} accounts.`);
+            return;
+        }
+
+        // 2. Guard: FD Deposits blocked after initial
+        if (type === 'credit' && isFD) {
+            alert('Fixed Deposit accounts do not support additional deposits.');
+            return;
+        }
+
+        // 3. Guard: RD/DD Installment Limits and Frequency
+        if (type === 'credit' && isRD) {
+            const installment = account.originalAmount || 0;
+            const today = new Date().toISOString().split('T')[0];
+            const currentMonth = today.substring(0, 7); // YYYY-MM
+
+            // Check Frequency
+            if (account.rdFrequency === 'Daily') {
+                const alreadyDepositedToday = account.transactions
+                    .filter(t => t.type === 'credit' && t.date === today)
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                if (alreadyDepositedToday + amt > installment) {
+                    alert(`Daily Deposit Limit Exceeded! \nInstallment: ${formatCurrency(installment)} \nAlready deposited today: ${formatCurrency(alreadyDepositedToday)} \nRequested: ${formatCurrency(amt)}`);
+                    return;
+                }
+            } else {
+                // Monthly
+                const alreadyDepositedThisMonth = account.transactions
+                    .filter(t => t.type === 'credit' && t.date.startsWith(currentMonth))
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                if (alreadyDepositedThisMonth + amt > installment) {
+                    alert(`Monthly Deposit Limit Exceeded! \nInstallment: ${formatCurrency(installment)} \nAlready deposited this month: ${formatCurrency(alreadyDepositedThisMonth)} \nRequested: ${formatCurrency(amt)}`);
+                    return;
+                }
+            }
+        }
         const txId = `TX-${Date.now()}`;
         const txDate = new Date().toISOString().split('T')[0];
 
@@ -869,7 +1029,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         setTransForm({ accountId: accounts[0]?.id || '', type: 'credit', amount: '', description: '', dueDate: '', paymentMethod: 'Cash', cashAmount: '', onlineAmount: '', utrNumber: '' });
     };
     const handlePrintSuccessReceipt = () => { if (!transactionSuccess) return; const acc = accounts.find(a => a.accountNumber === transactionSuccess.accountNumber); if (acc) { printReceipt({ id: transactionSuccess.txId, amount: transactionSuccess.amount, type: transactionSuccess.type as any, date: new Date().toISOString(), description: transactionSuccess.description, paymentMethod: 'Cash' }, acc, transactionSuccess.balanceAfter); } };
-    const closeTransModal = () => { setShowTransModal(false); setTransactionSuccess(null); };
+    const closeTransModal = () => {
+        setShowTransModal(false);
+        setTransactionSuccess(null);
+        setIsLockedAccount(false);
+    };
 
     // --- Account Wizard Logic ---
     const handleNextStep = () => { if (accountWizardStep === 1) { setAccountWizardStep(2); } else if (accountWizardStep === 2) { if (accountForm.type === AccountType.LOAN && (!guarantors.g1Name || !guarantors.g1Phone)) { alert("At least one guarantor is required for loans."); return; } setAccountWizardStep(3); } };
@@ -1132,7 +1296,17 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             }
             rows.push({ label: 'Est. Maturity Value', value: formatCurrency(Math.round(matVal)), icon: PiggyBank, highlight: true });
         } else if (isRD) {
-            rows.push({ label: 'Frequency', value: acc.rdFrequency || 'Monthly', icon: Calendar });
+            const P = acc.emi || 0;
+            const R = acc.interestRate || 0;
+            const termMonths = acc.termMonths || 0;
+            let matVal = 0;
+            if (acc.rdFrequency === 'Daily') {
+                const days = termMonths * 30; // Approximation for daily RD
+                matVal = (P * days) + ((P * (days * (days + 1)) / 2) * (R / 36500));
+            } else {
+                matVal = (P * termMonths) + (P * (termMonths * (termMonths + 1) / 2) * (R / 1200));
+            }
+            rows.push({ label: 'Est. Maturity Value', value: formatCurrency(Math.round(matVal)), icon: PiggyBank, highlight: true });
         } else if (isLoan) {
             rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
         } else if (isOD) {
@@ -1214,7 +1388,6 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                         )}
                                     </button>
                                     <button onClick={handlePrintStatement} className="text-sm bg-white border border-slate-300 text-slate-700 px-3 py-1.5 rounded-lg hover:bg-slate-50 flex items-center gap-2"><Printer size={16} /> Full Statement</button>
-                                    <button onClick={() => setShowTransModal(true)} className="text-sm bg-slate-900 text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 flex items-center gap-2"><Plus size={16} /> Record Transaction</button>
                                 </div>
                             </div>
                             {accounts.map(acc => {
@@ -1249,12 +1422,23 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                     <p className="text-xs text-slate-500 font-mono">{acc.accountNumber}</p>
                                                 </div>
                                             </div>
-                                            <div className="text-right pr-8 flex flex-col items-end">
+                                            <div className="text-right pr-2 flex flex-col items-end">
                                                 <p className={`text-lg font-bold ${acc.type === AccountType.LOAN ? 'text-red-600' : 'text-slate-900'}`}>{formatCurrency(acc.balance)}</p>
                                                 <span className={`text-xs px-2 py-0.5 rounded-full mt-1 ${acc.status === 'Active' ? 'bg-emerald-100 text-emerald-700' :
                                                     acc.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
                                                         'bg-slate-100 text-slate-600'
                                                     }`}>{acc.status}</span>
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setTransForm(prev => ({ ...prev, accountId: acc.id }));
+                                                        setIsLockedAccount(true);
+                                                        setShowTransModal(true);
+                                                    }}
+                                                    className="mt-3 text-[10px] font-bold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-1 transition-colors group/btn"
+                                                >
+                                                    <Plus size={12} className="group-hover/btn:rotate-90 transition-transform" /> Transaction
+                                                </button>
                                             </div>
                                         </div>
 
@@ -1304,13 +1488,40 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     {activeTab === 'receipts' && (
                         <div className="space-y-6">
                             <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                                <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                                    <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                                        <History size={18} className="text-blue-600" />
-                                        Financial Activity & Receipts
-                                    </h3>
-                                    <div className="text-xs text-slate-500 font-medium">
-                                        Showing last 1000 financial interactions
+                                <div className="p-4 border-b border-slate-100 bg-slate-50/50">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                                            <History size={18} className="text-blue-600" />
+                                            Financial Activity & Receipts
+                                        </h3>
+                                        <div className="text-xs text-slate-500 font-medium">
+                                            Showing last 1000 financial interactions
+                                        </div>
+                                    </div>
+
+                                    {/* Account Filter Tabs */}
+                                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-thin">
+                                        <button
+                                            onClick={() => setHistoryFilter(prev => ({ ...prev, accountId: 'All' }))}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${historyFilter.accountId === 'All' ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-slate-200 hover:border-blue-300 hover:text-blue-600'}`}
+                                        >
+                                            All Accounts
+                                        </button>
+                                        {accounts.map(acc => (
+                                            <button
+                                                key={acc.id}
+                                                onClick={() => setHistoryFilter(prev => ({ ...prev, accountId: acc.id }))}
+                                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${historyFilter.accountId === acc.id ? 'bg-blue-600 text-white shadow-md shadow-blue-200' : 'bg-white text-slate-600 border border-slate-200 hover:border-blue-300 hover:text-blue-600'}`}
+                                            >
+                                                {acc.type} ({acc.accountNumber.split('-').pop()})
+                                            </button>
+                                        ))}
+                                        <button
+                                            onClick={() => setHistoryFilter(prev => ({ ...prev, accountId: 'Ledger' }))}
+                                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${historyFilter.accountId === 'Ledger' ? 'bg-purple-600 text-white shadow-md shadow-purple-200' : 'bg-white text-slate-600 border border-slate-200 hover:border-purple-300 hover:text-purple-600'}`}
+                                        >
+                                            Admission & Fees
+                                        </button>
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
@@ -1328,13 +1539,15 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                         <tbody className="divide-y divide-slate-100">
                                             {(() => {
                                                 const allActivity = [
-                                                    ...accounts.flatMap(a => a.transactions.map(t => ({
-                                                        ...t,
-                                                        ref: `${a.type.split(' ')[0]} - ${a.accountNumber.split('-').pop()}`,
-                                                        itemType: 'transaction' as const,
-                                                        fullAcc: a
-                                                    }))),
-                                                    ...(ledger || []).filter(l => l.memberId === member.id).map(l => ({
+                                                    ...accounts
+                                                        .filter(a => historyFilter.accountId === 'All' || historyFilter.accountId === a.id)
+                                                        .flatMap(a => a.transactions.map(t => ({
+                                                            ...t,
+                                                            ref: `${a.type.split(' ')[0]} - ${a.accountNumber.split('-').pop()}`,
+                                                            itemType: 'transaction' as const,
+                                                            fullAcc: a
+                                                        }))),
+                                                    ...(historyFilter.accountId === 'All' || historyFilter.accountId === 'Ledger' ? (ledger || []).filter(l => l.memberId === member.id).map(l => ({
                                                         id: l.id,
                                                         date: l.date,
                                                         description: l.description,
@@ -1344,7 +1557,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                         utrNumber: l.utrNumber,
                                                         ref: l.category,
                                                         itemType: 'ledger' as const
-                                                    }))
+                                                    })) : [])
                                                 ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
                                                     .slice(0, 1000);
 
@@ -1874,39 +2087,64 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                     <button onClick={closeTransModal}><X size={20} /></button>
                                 </div>
                                 <form onSubmit={submitTransaction} className="p-6 space-y-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1">Select Account</label>
-                                        <select
-                                            className="w-full border p-2 rounded-lg bg-white"
-                                            value={transForm.accountId}
-                                            onChange={e => setTransForm({ ...transForm, accountId: e.target.value })}
-                                        >
-                                            {accounts.map(a => (
-                                                <option key={a.id} value={a.id}>{a.type} - {a.accountNumber} ({formatCurrency(a.balance)})</option>
-                                            ))}
-                                        </select>
-                                    </div>
+                                    {!isLockedAccount && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Select Account</label>
+                                            <select
+                                                className="w-full border p-2 rounded-lg bg-white"
+                                                value={transForm.accountId}
+                                                onChange={e => setTransForm({ ...transForm, accountId: e.target.value })}
+                                            >
+                                                {accounts
+                                                    .filter(a => !(a.type === AccountType.LOAN && a.status === AccountStatus.PENDING))
+                                                    .map(a => (
+                                                        <option key={a.id} value={a.id}>{a.type} - {a.accountNumber} ({formatCurrency(a.balance)})</option>
+                                                    ))}
+                                            </select>
+                                        </div>
+                                    )}
 
                                     <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">Type</label>
-                                            <div className="flex gap-2">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTransForm({ ...transForm, type: 'credit' })}
-                                                    className={`flex-1 py-2 text-sm font-bold rounded-lg ${transForm.type === 'credit' ? 'bg-green-100 text-green-700 ring-2 ring-green-500' : 'bg-slate-100 text-slate-500'}`}
-                                                >
-                                                    Credit (+)
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setTransForm({ ...transForm, type: 'debit' })}
-                                                    className={`flex-1 py-2 text-sm font-bold rounded-lg ${transForm.type === 'debit' ? 'bg-red-100 text-red-700 ring-2 ring-red-500' : 'bg-slate-100 text-slate-500'}`}
-                                                >
-                                                    Debit (-)
-                                                </button>
-                                            </div>
-                                        </div>
+                                        {(() => {
+                                            const acc = accounts.find(a => a.id === transForm.accountId);
+                                            const isLoan = acc?.type === AccountType.LOAN;
+                                            const isRD = acc?.type === AccountType.RECURRING_DEPOSIT;
+                                            const isCD = acc?.type === AccountType.COMPULSORY_DEPOSIT;
+                                            const isFD = acc?.type === AccountType.FIXED_DEPOSIT;
+
+                                            // Withdrawals blocked for Loan, FD, RD, CD
+                                            const canDebit = !isLoan && !isFD && !isRD && !isCD;
+                                            // Deposits blocked for FD (after initial)
+                                            const canCredit = !isFD;
+
+                                            return (
+                                                <div className="flex flex-col gap-2 col-span-1">
+                                                    <label className="block text-xs font-bold text-slate-500">Type</label>
+                                                    <div className="flex gap-2">
+                                                        {canCredit && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setTransForm({ ...transForm, type: 'credit' })}
+                                                                className={`flex-1 py-2 text-sm font-bold rounded-lg ${transForm.type === 'credit' ? 'bg-green-100 text-green-700 ring-2 ring-green-500' : 'bg-slate-100 text-slate-500'}`}
+                                                            >
+                                                                Credit (+)
+                                                            </button>
+                                                        )}
+                                                        {canDebit && (
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setTransForm({ ...transForm, type: 'debit' })}
+                                                                className={`flex-1 py-2 text-sm font-bold rounded-lg ${transForm.type === 'debit' ? 'bg-red-100 text-red-700 ring-2 ring-red-500' : 'bg-slate-100 text-slate-500'}`}
+                                                            >
+                                                                Debit (-)
+                                                            </button>
+                                                        )}
+                                                        {isFD && <p className="text-[10px] text-amber-600 font-medium py-2">FD accounts do not support additional transactions after creation.</p>}
+                                                        {!canDebit && !isFD && <p className="text-[10px] text-amber-600 font-medium py-2">Withdrawals not allowed for this account type.</p>}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
 
                                         {/* Dynamic Amount Field(s) */}
                                         {transForm.paymentMethod !== 'Both' ? (

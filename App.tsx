@@ -407,13 +407,14 @@ const App: React.FC = () => {
 
     const handleAddAccount = async (memberId: string, accountData: Partial<Account>) => {
         if (!accountData.type) return;
+        const currentCount = accounts.filter(a => a.memberId === memberId).length;
         const newAccount = createAccount(memberId, accountData.type, accountData.balance || 0, accountData.loanType, {
             odLimit: accountData.odLimit,
             rdFrequency: accountData.rdFrequency,
             guarantors: accountData.guarantors,
             termMonths: accountData.termMonths,
             interestRate: accountData.interestRate
-        }, settings);
+        }, currentCount + 1, settings);
 
         if (accountData.maturityDate) newAccount.maturityDate = accountData.maturityDate;
         if (accountData.currency) newAccount.currency = accountData.currency;

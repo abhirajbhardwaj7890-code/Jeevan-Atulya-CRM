@@ -166,7 +166,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             // Construct Initial Accounts
             const initialAccountStatus = AccountStatus.ACTIVE;
 
-            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, parseFloat(formData.shareMoney as any) || 0, undefined, undefined, settings);
+            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, parseFloat(formData.shareMoney as any) || 0, undefined, undefined, 1, settings);
             shareCap.id = `ACC-${newMember.id}-SHR-INIT`;
             if (shareCap.transactions.length > 0) {
                 shareCap.transactions[0].id = `TX-${newMember.id}-SHR-INIT`;
@@ -175,7 +175,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             }
             shareCap.status = initialAccountStatus;
 
-            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, parseFloat(formData.compulsoryDeposit as any) || 0, undefined, undefined, settings);
+            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, parseFloat(formData.compulsoryDeposit as any) || 0, undefined, undefined, 2, settings);
             compDep.id = `ACC-${newMember.id}-CD-INIT`;
             if (compDep.transactions.length > 0) {
                 compDep.transactions[0].id = `TX-${newMember.id}-CD-INIT`;

@@ -1,7 +1,7 @@
 
 export enum AccountType {
   OPTIONAL_DEPOSIT = 'Optional Deposit',
-  SHARE_CAPITAL = 'Share Capital',
+  SHARE_CAPITAL = 'Share Money',
   LOAN = 'Loan',
   FIXED_DEPOSIT = 'Fixed Deposit',
   RECURRING_DEPOSIT = 'Recurring Deposit',

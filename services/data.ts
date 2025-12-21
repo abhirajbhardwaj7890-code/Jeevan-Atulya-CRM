@@ -289,6 +289,7 @@ export const createAccount = (
         termMonths?: number,  // Added overrides
         interestRate?: number
     },
+    seriesNumber: number = 1,
     settings: AppSettings = DEFAULT_SETTINGS
 ): Account => {
     let code = 'ACC';
@@ -365,7 +366,7 @@ export const createAccount = (
         memberId,
         type,
         loanType,
-        accountNumber: `${code}-${Math.floor(Math.random() * 1000000)}`,
+        accountNumber: `${memberId}-${code}-${seriesNumber}`,
         balance,
         originalAmount: originalAmount,
         initialAmount: originalAmount,
