@@ -382,9 +382,11 @@ export const createAccount = (
             id: `TX-${Date.now()}`,
             date: new Date().toISOString().split('T')[0],
             amount: balance,
-            type: 'credit',
-            category: 'Opening Balance',
-            description: 'Initial Deposit / Disbursement',
+            type: type === AccountType.LOAN ? 'debit' : 'credit',
+            category: type === AccountType.LOAN ? 'Loan Disbursement' : 'Opening Balance',
+            description: type === AccountType.LOAN
+                ? `New ${loanType || 'Personal'} Loan`
+                : 'Initial Deposit / Disbursement',
             paymentMethod: 'Cash'
         }]
     };

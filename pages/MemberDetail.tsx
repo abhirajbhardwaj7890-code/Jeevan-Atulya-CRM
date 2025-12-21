@@ -140,6 +140,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     // Account Modal State (Wizard)
     const [showAccountModal, setShowAccountModal] = useState(false);
     const [accountWizardStep, setAccountWizardStep] = useState(1);
+    const [accountSuccess, setAccountSuccess] = useState<{
+        id: string;
+        type: AccountType;
+        accountNumber: string;
+        amount: number;
+    } | null>(null);
     const [accountForm, setAccountForm] = useState({
         type: AccountType.OPTIONAL_DEPOSIT,
         loanType: LoanType.PERSONAL,
@@ -418,23 +424,139 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
         const teens = ['Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
 
-        const convertLessThanOneThousand = (n: number): string => {
+        const convert = (n: number): string => {
             if (n === 0) return '';
             if (n < 10) return ones[n];
             if (n < 20) return teens[n - 10];
             if (n < 100) return tens[Math.floor(n / 10)] + (n % 10 !== 0 ? ' ' + ones[n % 10] : '');
-            return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + convertLessThanOneThousand(n % 100) : '');
+            return ones[Math.floor(n / 100)] + ' Hundred' + (n % 100 !== 0 ? ' ' + convert(n % 100) : '');
         };
 
         if (num === 0) return 'Zero';
 
         let words = '';
-        if (num >= 1000) {
-            words += convertLessThanOneThousand(Math.floor(num / 1000)) + ' Thousand ';
-            num %= 1000;
+        let remaining = Math.floor(num);
+
+        if (remaining >= 10000000) {
+            words += convert(Math.floor(remaining / 10000000)) + ' Crore ';
+            remaining %= 10000000;
         }
-        words += convertLessThanOneThousand(num);
+        if (remaining >= 100000) {
+            words += convert(Math.floor(remaining / 100000)) + ' Lakh ';
+            remaining %= 100000;
+        }
+        if (remaining >= 1000) {
+            words += convert(Math.floor(remaining / 1000)) + ' Thousand ';
+            remaining %= 1000;
+        }
+        words += convert(remaining);
         return words.trim();
+    };
+
+    const handlePrintFDCertificate = (acc: Account) => {
+        if (acc.type !== AccountType.FIXED_DEPOSIT) return;
+
+        const dateStr = formatDate(acc.transactions[0]?.date || new Date().toISOString());
+        const termYears = (acc.termMonths || 12) / 12;
+        const rate = acc.interestRate || 0;
+        const maturityAmt = Math.round(acc.balance * Math.pow(1 + (rate / 100), termYears));
+
+        const amountInWords = numberToWords(acc.balance);
+        const maturityInWords = numberToWords(maturityAmt);
+
+        const certNo = acc.id.split('-').pop(); // Simple cert number from ID
+
+        const htmlContent = `
+            <html>
+            <head>
+                <title>FD Certificate - ${acc.accountNumber}</title>
+                <style>
+                    @page { size: portrait; margin: 10mm; }
+                    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 11px; color: #333; margin: 0; padding: 0; line-height: 1.2; }
+                    .header { text-align: center; border-bottom: 2px solid #333; padding-bottom: 10px; margin-bottom: 15px; }
+                    .header h1 { margin: 0; font-size: 20px; color: #000; }
+                    .header p { margin: 5px 0 0; font-size: 12px; }
+                    .gray-bar { background: #f0f0f0; border: 1px solid #ccc; font-weight: bold; padding: 5px 10px; display: flex; justify-content: space-between; margin-bottom: 15px; font-size: 12px; }
+                    .info-section { display: grid; grid-template-columns: 1.5fr 1fr; gap: 40px; }
+                    .info-column { display: flex; flex-direction: column; gap: 8px; }
+                    .info-row { display: flex; line-height: 1.4; }
+                    .label { width: 130px; color: #555; font-size: 10px; }
+                    .value { flex: 1; font-weight: bold; color: #000; }
+                    .footer { margin-top: 40px; font-weight: bold; font-size: 10px; }
+                    .auth-text { text-align: center; margin-bottom: 40px; font-size: 11px; }
+                    .sig-grid { display: flex; justify-content: space-between; text-align: center; font-weight: bold; font-size: 10px; margin-top: 40px; }
+                    .spacer { height: 40px; border-bottom: 1px dashed #ccc; margin-bottom: 40px; }
+                    .cert-title { background: #999; color: #fff; text-align: center; padding: 5px; margin-bottom: 15px; font-size: 16px; font-weight: bold; }
+                    .lower-info { border: 1px solid #ccc; padding: 15px; border-radius: 4px; }
+                </style>
+            </head>
+            <body>
+                <div class="header">
+                    <h1>JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</h1>
+                    <p>E-287/8, PUL PEHLADPUR, DELHI-110044</p>
+                </div>
+                <div class="gray-bar"><span>REG.NO-10954</span><span style="border: 1px solid #000; padding: 2px 10px;">Cash</span></div>
+                <div class="info-section">
+                    <div class="info-column">
+                        <div class="info-row"><span class="label">Certificate No.</span><span class="value">: ${certNo}</span></div>
+                        <div class="info-row"><span class="label">Depositor Name</span><span class="value">: Mr./Ms. ${member.fullName.toUpperCase()}</span></div>
+                        <div class="info-row"><span class="label">Nominee's Name</span><span class="value">: ${member.nominee?.name || '-'}</span></div>
+                        <div class="info-row"><span class="label">Address</span><span class="value">: ${member.currentAddress}</span></div>
+                        <div class="info-row" style="margin-top: 10px;"><span class="label">Deposit Period</span><span class="value">: ${acc.termMonths} Months</span></div>
+                        <div class="info-row"><span class="label">Deposit Rate</span><span class="value">: ${acc.interestRate}%</span></div>
+                        <div class="info-row"><span class="label">Voucher Details</span><span class="value">: Initial Deposit - ${dateStr}</span></div>
+                    </div>
+                    <div class="info-column" style="border-left: 1px solid #eee; padding-left: 20px;">
+                        <div class="info-row"><span class="label">A/c.No.</span><span class="value">: ${acc.accountNumber}</span></div>
+                        <div class="info-row"><span class="label">Deposit Date</span><span class="value">: ${dateStr}</span></div>
+                        <div class="info-row"><span class="label">Value Date</span><span class="value">: ${dateStr}</span></div>
+                        <div class="info-row"><span class="label">Deposit Amt.</span><span class="value">: ${acc.balance.toFixed(2)}</span></div>
+                        <div class="info-row"><span class="label">Int.Cease Date</span><span class="value">: ${formatDate(acc.maturityDate)}</span></div>
+                        <div class="info-row"><span class="label">Pay Date</span><span class="value">: ${formatDate(acc.maturityDate)}</span></div>
+                        <div class="info-row"><span class="label">Maturity Amt.</span><span class="value">: ${maturityAmt.toFixed(2)}</span></div>
+                    </div>
+                </div>
+                <div style="display:flex; justify-content: space-between; margin-top: 40px; font-weight: bold;"><span>Receiver Signature</span><span>Auth. Signature</span></div>
+                <div class="spacer"></div>
+                <div class="header">
+                    <h1>JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</h1>
+                    <p>E-287/8, PUL PEHLADPUR, DELHI-110044</p>
+                </div>
+                <div style="text-align:center; font-weight:bold; margin-bottom: 5px;">REG.NO-10954<br/>9911770293, 9911773542</div>
+                <div class="cert-title">Fixed Deposit Certificate</div>
+                <div class="lower-info">
+                    <div class="info-section">
+                        <div class="info-column">
+                            <div class="info-row"><span class="label">Certificate No.</span><span class="value">: ${certNo}</span></div>
+                            <div class="info-row"><span class="label">Depositor Name</span><span class="value">: Mr./Ms. ${member.fullName.toUpperCase()}</span></div>
+                            <div class="info-row"><span class="label">Nominee's Name</span><span class="value">: ${member.nominee?.name || '-'}</span></div>
+                            <div class="info-row"><span class="label">Father/Husband Name</span><span class="value">: ${member.fatherName || '-'}</span></div>
+                            <div class="info-row"><span class="label">Address</span><span class="value">: ${member.currentAddress}</span></div>
+                            <div class="info-row"><span class="label">Deposit in Words</span><span class="value">: ${amountInWords} Only</span></div>
+                            <div class="info-row"><span class="label">Maturity in Words</span><span class="value">: ${maturityInWords} Only</span></div>
+                            <div class="info-row"><span class="label">Voucher Details</span><span class="value">: Initial Deposit - ${dateStr}</span></div>
+                        </div>
+                        <div class="info-column" style="border-left: 1px solid #eee; padding-left: 20px;">
+                            <div class="info-row"><span class="label">A/c.No.</span><span class="value">: ${acc.accountNumber}</span></div>
+                            <div class="info-row"><span class="label">Deposit Date</span><span class="value">: ${dateStr}</span></div>
+                            <div class="info-row"><span class="label">Value Date</span><span class="value">: ${dateStr}</span></div>
+                            <div class="info-row"><span class="label">Deposit Amt.</span><span class="value">: ${acc.balance.toFixed(2)}</span></div>
+                            <div class="info-row"><span class="label">Deposit Period</span><span class="value">: ${acc.termMonths} Months</span></div>
+                            <div class="info-row"><span class="label">Deposit Rate</span><span class="value">: ${acc.interestRate}%</span></div>
+                            <div class="info-row"><span class="label">Int.Cease Date</span><span class="value">: ${formatDate(acc.maturityDate)}</span></div>
+                            <div class="info-row"><span class="label">Pay Date</span><span class="value">: ${formatDate(acc.maturityDate)}</span></div>
+                            <div class="info-row"><span class="label">Maturity Amt.</span><span class="value">: ${maturityAmt.toFixed(2)}</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="auth-text" style="margin-top: 30px;">For JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
+                <div class="sig-grid"><div>SEAL</div><div>MANAGER/ACCOUNTANT</div><div>PRESIDENT</div><div>HONY. SECRETARY</div><div>TREASURER</div></div>
+                <div style="text-align:center; font-size:10px; margin-top:20px;">Have a Nice Day</div>
+            </body>
+            </html>
+        `;
+
+        printViaWindow(htmlContent);
     };
 
     const handlePrintRegReceipt = (overrideAmount?: number) => {
@@ -832,7 +954,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             if (guarantors.g2Name) finalGuarantors.push({ name: guarantors.g2Name, phone: guarantors.g2Phone, relation: guarantors.g2Rel });
         }
 
-        onAddAccount(member.id, {
+        const newAccountData: Partial<Account> = {
             type: accountForm.type,
             loanType: accountForm.type === AccountType.LOAN ? accountForm.loanType : undefined,
             balance: openingBalance,
@@ -848,6 +970,16 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             rdFrequency: accountForm.type === AccountType.RECURRING_DEPOSIT ? accountForm.rdFrequency as any : undefined,
             originalAmount: openingBalance,
             guarantors: finalGuarantors
+        };
+
+        onAddAccount(member.id, newAccountData);
+
+        // Set success state for confirmation screen
+        setAccountSuccess({
+            id: `NEW-${Date.now()}`, // Temporary until refresh
+            type: accountForm.type,
+            accountNumber: 'Generated...',
+            amount: openingBalance
         });
 
         // LOAN FEES LOGIC (700rs for Emergency Loans)
@@ -864,8 +996,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 onlineAmount: 0
             });
         }
+    };
 
+    const closeAccountModal = () => {
         setShowAccountModal(false);
+        setAccountSuccess(null);
         setAccountWizardStep(1);
         setAccountForm(prev => ({ ...prev, amount: '0', purpose: '' }));
         setGuarantors({ g1Name: '', g1Phone: '', g1Rel: 'Friend', g2Name: '', g2Phone: '', g2Rel: 'Family' });
@@ -946,7 +1081,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
     const handlePrintStatement = () => {
         // ... (Existing statement print logic unchanged)
-        const allTx = accounts.flatMap(a => a.transactions.map(t => ({ ...t, account: a.accountNumber, accType: a.type }))).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        const allTx = accounts
+            .filter(a => !(a.type === AccountType.LOAN && a.status === 'Pending'))
+            .flatMap(a => a.transactions.map(t => ({ ...t, account: a.accountNumber, accType: a.type })))
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
         const content = `<html><head><style>body { font-family: Arial, sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #ccc; padding: 8px; text-align: left; } .amount { text-align: right; }</style></head><body><h1>Statement</h1><table><thead><tr><th>Date</th><th>Account</th><th>Type</th><th>Description</th><th>UTR</th><th class="amount">Amount</th></tr></thead><tbody>${allTx.map(t => `<tr><td>${formatDate(t.date)}</td><td>${t.account}<br/>${t.accType}</td><td>${t.type}</td><td>${t.description}</td><td>${t.utrNumber || '-'}</td><td class="amount">${formatCurrency(t.amount)}</td></tr>`).join('')}</tbody></table></body></html>`;
         printViaWindow(content);
     };
@@ -1080,10 +1218,19 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                 </div>
                             </div>
                             {accounts.map(acc => {
+                                const isFD = acc.type === AccountType.FIXED_DEPOSIT;
                                 const details = getAccountCardDetails(acc);
                                 return (
                                     <div key={acc.id} onClick={() => openViewAccountModal(acc)} className="bg-white border border-slate-200 rounded-xl p-5 hover:border-blue-300 transition-all hover:shadow-md cursor-pointer relative group">
-                                        <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            {isFD && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handlePrintFDCertificate(acc); }}
+                                                    className="bg-emerald-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm hover:bg-emerald-700"
+                                                >
+                                                    <Printer size={12} /> Print Certificate
+                                                </button>
+                                            )}
                                             <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-sm">
                                                 <Calculator size={12} /> Simulate
                                             </div>
@@ -1163,7 +1310,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                         Financial Activity & Receipts
                                     </h3>
                                     <div className="text-xs text-slate-500 font-medium">
-                                        Showing last 50 financial interactions
+                                        Showing last 1000 financial interactions
                                     </div>
                                 </div>
                                 <div className="overflow-x-auto">
@@ -1199,7 +1346,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                         itemType: 'ledger' as const
                                                     }))
                                                 ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                                                    .slice(0, 50);
+                                                    .slice(0, 1000);
 
                                                 if (allActivity.length === 0) {
                                                     return (
@@ -1457,7 +1604,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     <div className="bg-white rounded-xl w-full max-w-lg overflow-hidden shadow-2xl animate-fade-in">
                         <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white">
                             <h3 className="font-bold text-lg">Open New Account</h3>
-                            <button onClick={() => setShowAccountModal(false)}><X size={20} /></button>
+                            <button onClick={closeAccountModal}><X size={20} /></button>
                         </div>
 
                         <div className="p-6">
@@ -1634,7 +1781,33 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                     </div>
                                 )}
 
-                                {accountWizardStep === 3 && (
+                                {accountSuccess ? (
+                                    <div className="animate-fade-in text-center py-4">
+                                        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                                            <Check size={32} />
+                                        </div>
+                                        <h4 className="text-xl font-bold text-slate-900">Account Created Successfully</h4>
+                                        <p className="text-slate-500 text-sm mt-2 mb-6">
+                                            A new <strong>{accountSuccess.type}</strong> account has been opened for {member.fullName} with an opening balance of <strong>{formatCurrency(accountSuccess.amount)}</strong>.
+                                        </p>
+                                        <div className="flex flex-col gap-3">
+                                            {accountSuccess.type === AccountType.FIXED_DEPOSIT && (
+                                                <button
+                                                    onClick={() => {
+                                                        const latestAcc = accounts.find(a => a.type === AccountType.FIXED_DEPOSIT);
+                                                        if (latestAcc) handlePrintFDCertificate(latestAcc);
+                                                    }}
+                                                    className="w-full py-3 bg-emerald-600 text-white rounded-lg font-bold flex items-center justify-center gap-2 hover:bg-emerald-700"
+                                                >
+                                                    <Printer size={18} /> Print FD Certificate
+                                                </button>
+                                            )}
+                                            <button onClick={closeAccountModal} className="w-full py-3 bg-slate-900 text-white rounded-lg font-bold hover:bg-slate-800">
+                                                Close
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : accountWizardStep === 3 && (
                                     <div className="animate-fade-in text-center py-4">
                                         <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                             <CheckCircle size={32} />
@@ -1662,7 +1835,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                 )}
 
                                 {/* Navigation Buttons */}
-                                {accountWizardStep < 3 && (
+                                {!accountSuccess && accountWizardStep < 3 && (
                                     <div className="flex justify-between pt-4 border-t border-slate-100 mt-4">
                                         {accountWizardStep > 1 ? (
                                             <button type="button" onClick={handlePrevStep} className="text-slate-500 font-medium hover:text-slate-800">Back</button>

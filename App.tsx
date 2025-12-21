@@ -471,6 +471,10 @@ const App: React.FC = () => {
                 ledgerType = 'Income';
                 ledgerCategory = 'Member Deposit';
             } else {
+                if (account.balance < txAmount) {
+                    alert("Transaction Failed: Not enough balance!");
+                    return;
+                }
                 newBalance = account.balance - txAmount;
                 ledgerType = 'Expense';
                 ledgerCategory = 'Member Withdrawal';
