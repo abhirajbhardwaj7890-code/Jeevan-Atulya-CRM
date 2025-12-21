@@ -689,7 +689,7 @@ const App: React.FC = () => {
                 )}
 
                 {currentPage === 'reports' && (
-                    <Reports accounts={accounts} members={members} />
+                    <Reports accounts={accounts} members={members} ledger={ledger} />
                 )}
 
                 {currentPage === 'network' && (
