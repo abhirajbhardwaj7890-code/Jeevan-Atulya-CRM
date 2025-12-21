@@ -16,7 +16,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     e.preventDefault();
     setError('');
 
-    if (selectedRole === 'Admin' && password === 'jeevan1440') {
+    if (selectedRole === 'Admin' && password === '1410') {
       onLogin('Admin');
     } else if (selectedRole === 'Staff' && password === '1365') {
       onLogin('Staff');
@@ -47,20 +47,20 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 rounded-lg">
-               <button 
-                 type="button"
-                 onClick={() => { setSelectedRole('Admin'); setError(''); setPassword(''); }}
-                 className={`py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${selectedRole === 'Admin' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
-               >
-                 <Shield size={16} /> Admin
-               </button>
-               <button 
-                 type="button"
-                 onClick={() => { setSelectedRole('Staff'); setError(''); setPassword(''); }}
-                 className={`py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${selectedRole === 'Staff' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
-               >
-                 <User size={16} /> Staff
-               </button>
+              <button
+                type="button"
+                onClick={() => { setSelectedRole('Admin'); setError(''); setPassword(''); }}
+                className={`py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${selectedRole === 'Admin' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Shield size={16} /> Admin
+              </button>
+              <button
+                type="button"
+                onClick={() => { setSelectedRole('Staff'); setError(''); setPassword(''); }}
+                className={`py-2 rounded-md text-sm font-bold transition-all flex items-center justify-center gap-2 ${selectedRole === 'Staff' ? 'bg-white shadow text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <User size={16} /> Staff
+              </button>
             </div>
 
             <div>
@@ -84,12 +84,12 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
               type="submit"
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
-               <Key size={18} /> Authenticate
+              <Key size={18} /> Authenticate
             </button>
           </form>
 
           <p className="text-center text-xs text-slate-400 mt-8">
-            Unauthorized access is prohibited. <br/> IP Logged: 192.168.1.1
+            Unauthorized access is prohibited. <br /> IP Logged: 192.168.1.1
           </p>
         </div>
       </div>
