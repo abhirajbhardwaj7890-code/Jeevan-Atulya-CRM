@@ -622,7 +622,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
             <div class="info-grid">
                 <div class="row">
-                    <div class="cell"><span class="lbl">Receipt No.</span> : <b>${member.id}</b></div>
+                    <div class="cell"></div>
                     <div class="cell right"><span class="lbl">Rcpt.Date</span>: ${dateStr}</div>
                 </div>
                 <div class="row">
