@@ -19,6 +19,7 @@ export enum LoanType {
 
 export enum AccountStatus {
   ACTIVE = 'Active',
+  PENDING = 'Pending',
   DORMANT = 'Dormant',
   CLOSED = 'Closed',
   DEFAULTED = 'Defaulted'

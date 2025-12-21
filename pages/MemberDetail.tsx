@@ -850,13 +850,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             guarantors: finalGuarantors
         });
 
-        // LOAN FEES LOGIC (700rs for Personal Loans)
-        if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL) {
+        // LOAN FEES LOGIC (700rs for Emergency Loans)
+        if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY) {
             onAddLedgerEntry({
                 id: `LDG-FEES-${Date.now()}`,
                 memberId: member.id,
                 date: new Date().toISOString().split('T')[0],
-                description: `Loan Fees (Personal) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
+                description: `Loan Fees (Emergency) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
                 amount: 700,
                 type: 'Income',
                 category: 'Loan Processing Fees',
@@ -1104,9 +1104,29 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             </div>
                                             <div className="text-right pr-8 flex flex-col items-end">
                                                 <p className={`text-lg font-bold ${acc.type === AccountType.LOAN ? 'text-red-600' : 'text-slate-900'}`}>{formatCurrency(acc.balance)}</p>
-                                                <span className={`text-xs px-2 py-0.5 rounded-full mt-1 ${acc.status === 'Active' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{acc.status}</span>
+                                                <span className={`text-xs px-2 py-0.5 rounded-full mt-1 ${acc.status === 'Active' ? 'bg-emerald-100 text-emerald-700' :
+                                                    acc.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
+                                                        'bg-slate-100 text-slate-600'
+                                                    }`}>{acc.status}</span>
                                             </div>
                                         </div>
+
+                                        {/* Pending Loan Approval Action */}
+                                        {acc.status === 'Pending' && acc.type === AccountType.LOAN && userRole === 'Admin' && (
+                                            <div className="mb-3 pb-3 border-b border-amber-100">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        if (window.confirm(`Approve ${acc.loanType || 'Loan'} for ${formatCurrency(acc.balance)}?`)) {
+                                                            onUpdateAccount({ ...acc, status: AccountStatus.ACTIVE });
+                                                        }
+                                                    }}
+                                                    className="w-full py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 text-sm font-bold flex items-center justify-center gap-2 animate-pulse"
+                                                >
+                                                    <CheckCircle size={16} /> Approve Loan
+                                                </button>
+                                            </div>
+                                        )}
 
                                         {/* Enhanced Account Details Grid */}
                                         <div className="grid grid-cols-2 md:grid-cols-3 gap-4 pt-4 border-t border-slate-100 text-xs text-slate-600">
@@ -1624,7 +1644,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             You are about to create a <strong>{accountForm.type}</strong> account for {member.fullName} with an opening balance of <strong>{formatCurrency(parseFloat(accountForm.amount) || 0)}</strong>.
                                         </p>
 
-                                        {accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL && (
+                                        {accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY && (
                                             <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-left mb-6">
                                                 <p className="text-amber-800 font-bold text-xs uppercase mb-1">One-time Processing Fee: ₹700</p>
                                                 <ul className="text-[10px] text-amber-700 space-y-0.5 list-disc pl-4">

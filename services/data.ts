@@ -392,8 +392,16 @@ const getMemoryCache = () => {
 export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], agents: Agent[] }> => {
     // Check if Supabase is configured
     if (!isSupabaseConfigured()) {
-        // Return volatile memory cache
-        return getMemoryCache();
+        const cache = getMemoryCache();
+        return {
+            ...cache,
+            members: [...cache.members],
+            accounts: [...cache.accounts],
+            interactions: [...cache.interactions],
+            ledger: [...cache.ledger],
+            branches: [...cache.branches],
+            agents: [...cache.agents]
+        };
     }
 
     try {
@@ -430,7 +438,15 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
         console.error("Critical: Failed to load data from Supabase", error);
         // Fail gracefully
         const cache = getMemoryCache();
-        return cache;
+        return {
+            ...cache,
+            members: [...cache.members],
+            accounts: [...cache.accounts],
+            interactions: [...cache.interactions],
+            ledger: [...cache.ledger],
+            branches: [...cache.branches],
+            agents: [...cache.agents]
+        };
     }
 };
 

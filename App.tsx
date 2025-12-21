@@ -417,7 +417,13 @@ const App: React.FC = () => {
 
         if (accountData.maturityDate) newAccount.maturityDate = accountData.maturityDate;
         if (accountData.currency) newAccount.currency = accountData.currency;
-        if (accountData.status) newAccount.status = accountData.status;
+
+        // Loan Approval Workflow: Non-Admin users create loans in Pending status
+        if (accountData.type === AccountType.LOAN && userRole !== 'Admin') {
+            newAccount.status = AccountStatus.PENDING;
+        } else if (accountData.status) {
+            newAccount.status = accountData.status;
+        }
 
         setAccounts(prev => [newAccount, ...prev]);
         await upsertAccount(newAccount);
@@ -440,84 +446,80 @@ const App: React.FC = () => {
     };
 
     const handleAddTransaction = async (accountId: string, transactionData: Partial<Transaction>) => {
-        let updatedAccount: Account | null = null;
-        let newLedgerEntry: LedgerEntry | null = null;
+        const account = accounts.find(acc => acc.id === accountId);
+        if (!account) return;
 
-        setAccounts(prevAccounts => prevAccounts.map(acc => {
-            if (acc.id === accountId) {
-                const isLoan = acc.type === AccountType.LOAN;
-                let newBalance = acc.balance;
+        const isLoan = account.type === AccountType.LOAN;
+        const txAmount = transactionData.amount || 0;
+        let newBalance = account.balance;
+        let ledgerType: 'Income' | 'Expense' = 'Income';
+        let ledgerCategory = 'Other';
 
-                const txAmount = transactionData.amount || 0;
-                let ledgerType: 'Income' | 'Expense' = 'Income';
-                let ledgerCategory = 'Other';
-
-                if (isLoan) {
-                    if (transactionData.type === 'credit') {
-                        newBalance = acc.balance - txAmount;
-                        ledgerType = 'Income';
-                        ledgerCategory = 'Loan Repayment';
-                    } else {
-                        newBalance = acc.balance + txAmount;
-                        ledgerType = 'Expense';
-                        ledgerCategory = 'Loan Disbursement';
-                    }
-                } else {
-                    if (transactionData.type === 'credit') {
-                        newBalance = acc.balance + txAmount;
-                        ledgerType = 'Income';
-                        ledgerCategory = 'Member Deposit';
-                    } else {
-                        newBalance = acc.balance - txAmount;
-                        ledgerType = 'Expense';
-                        ledgerCategory = 'Member Withdrawal';
-                    }
-                }
-
-                if (transactionData.description?.toLowerCase().includes('fine') || transactionData.description?.toLowerCase().includes('fee')) {
-                    ledgerType = 'Income';
-                    ledgerCategory = 'Fees & Fines';
-                }
-
-                newLedgerEntry = {
-                    id: `LDG-AUTO-${Date.now()}`,
-                    date: transactionData.date || new Date().toISOString().split('T')[0],
-                    description: `Auto: ${transactionData.description} (${acc.accountNumber})`,
-                    amount: txAmount,
-                    type: ledgerType,
-                    category: ledgerCategory
-                };
-
-                const newTransaction: Transaction = {
-                    id: transactionData.id || `TX-${Date.now()}`,
-                    date: transactionData.date!,
-                    amount: transactionData.amount!,
-                    type: transactionData.type!,
-                    description: transactionData.description!,
-                    dueDate: transactionData.dueDate,
-                    paymentMethod: transactionData.paymentMethod
-                };
-
-                updatedAccount = {
-                    ...acc,
-                    balance: newBalance,
-                    transactions: [newTransaction, ...acc.transactions]
-                };
-                return updatedAccount;
+        if (isLoan) {
+            if (transactionData.type === 'credit') {
+                newBalance = account.balance - txAmount;
+                ledgerType = 'Income';
+                ledgerCategory = 'Loan Repayment';
+            } else {
+                newBalance = account.balance + txAmount;
+                ledgerType = 'Expense';
+                ledgerCategory = 'Loan Disbursement';
             }
-            return acc;
-        }));
-
-        if (updatedAccount) {
-            if ((updatedAccount as Account).transactions.length > 0) {
-                const latestTx = (updatedAccount as Account).transactions[0];
-                await upsertTransaction(latestTx, accountId);
+        } else {
+            if (transactionData.type === 'credit') {
+                newBalance = account.balance + txAmount;
+                ledgerType = 'Income';
+                ledgerCategory = 'Member Deposit';
+            } else {
+                newBalance = account.balance - txAmount;
+                ledgerType = 'Expense';
+                ledgerCategory = 'Member Withdrawal';
             }
-            await upsertAccount(updatedAccount as Account);
         }
-        if (newLedgerEntry) {
-            setLedger(prev => [newLedgerEntry!, ...prev]);
+
+        if (transactionData.description?.toLowerCase().includes('fine') || transactionData.description?.toLowerCase().includes('fee')) {
+            ledgerType = 'Income';
+            ledgerCategory = 'Fees & Fines';
+        }
+
+        const newTransaction: Transaction = {
+            id: transactionData.id || `TX-${Date.now()}`,
+            date: transactionData.date || new Date().toISOString().split('T')[0],
+            amount: txAmount,
+            type: transactionData.type!,
+            description: transactionData.description!,
+            dueDate: transactionData.dueDate,
+            paymentMethod: transactionData.paymentMethod
+        };
+
+        const updatedAccount: Account = {
+            ...account,
+            balance: newBalance,
+            transactions: [newTransaction, ...account.transactions]
+        };
+
+        const newLedgerEntry: LedgerEntry = {
+            id: `LDG-AUTO-${Date.now()}`,
+            date: transactionData.date || new Date().toISOString().split('T')[0],
+            description: `Auto: ${transactionData.description} (${account.accountNumber})`,
+            amount: txAmount,
+            type: ledgerType,
+            category: ledgerCategory
+        };
+
+        // Update state
+        setAccounts(prevAccounts => prevAccounts.map(acc =>
+            acc.id === accountId ? updatedAccount : acc
+        ));
+        setLedger(prev => [newLedgerEntry, ...prev]);
+
+        // Persist
+        try {
+            await upsertTransaction(newTransaction, accountId);
+            await upsertAccount(updatedAccount);
             await upsertLedgerEntry(newLedgerEntry);
+        } catch (e) {
+            console.error("Failed to persist transaction", e);
         }
     };
 

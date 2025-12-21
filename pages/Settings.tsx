@@ -103,6 +103,60 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         email: lookup.email || ''
                     };
                 } else if (importType === 'accounts') {
+                    // SMART PASTE: Detect Wide Format (Multiple Account Type Columns)
+                    const accountTypeNames = Object.values(AccountType);
+                    const detectedAccountColumns: string[] = [];
+
+                    // Check if any headers match account type names
+                    Object.keys(row).forEach(key => {
+                        const normalized = key.toLowerCase().replace(/[^a-z]/g, '');
+                        accountTypeNames.forEach(accType => {
+                            const accTypeNorm = accType.toLowerCase().replace(/[^a-z]/g, '');
+                            if (normalized.includes(accTypeNorm) || accTypeNorm.includes(normalized)) {
+                                if (!detectedAccountColumns.includes(key)) {
+                                    detectedAccountColumns.push(key);
+                                }
+                            }
+                        });
+                    });
+
+                    // If Wide Format detected (multiple account columns), unpivot
+                    if (detectedAccountColumns.length > 1) {
+                        const memberId = lookup.memberid || lookup.legacyid || lookup.id || '';
+                        const openDate = lookup.openingdate || lookup.date || '';
+
+                        // Return array marker - we'll flatten later
+                        return {
+                            _isWideFormat: true,
+                            _memberId: memberId,
+                            _openDate: openDate,
+                            _accounts: detectedAccountColumns.map(col => {
+                                const balance = row[col];
+                                if (balance && parseFloat(balance) > 0) {
+                                    // Match column name to account type
+                                    let matchedType = AccountType.OPTIONAL_DEPOSIT;
+                                    const colNorm = col.toLowerCase().replace(/[^a-z]/g, '');
+
+                                    accountTypeNames.forEach(accType => {
+                                        const accTypeNorm = accType.toLowerCase().replace(/[^a-z]/g, '');
+                                        if (colNorm.includes(accTypeNorm) || accTypeNorm.includes(colNorm)) {
+                                            matchedType = accType;
+                                        }
+                                    });
+
+                                    return {
+                                        member_id: memberId,
+                                        account_type: matchedType,
+                                        opening_balance: balance,
+                                        opening_date: openDate
+                                    };
+                                }
+                                return null;
+                            }).filter(Boolean)
+                        };
+                    }
+
+                    // Standard Long Format
                     return {
                         member_id: lookup.memberid || lookup.legacyid || '',
                         account_type: lookup.accounttype || lookup.type || 'Optional Deposit',
@@ -141,6 +195,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     }
                 });
             });
+        }
+
+        // Flatten Wide Format accounts (unpivot multi-column account data)
+        if (importType === 'accounts' && isHeaderRow && previewData.length === 0) {
+            const flattened: any[] = [];
+            finalData.forEach(item => {
+                if (item._isWideFormat && item._accounts) {
+                    flattened.push(...item._accounts);
+                } else if (!item._isWideFormat) {
+                    flattened.push(item);
+                }
+            });
+            if (flattened.length > 0) {
+                finalData = flattened;
+            }
         }
 
         setPreviewData(finalData);
