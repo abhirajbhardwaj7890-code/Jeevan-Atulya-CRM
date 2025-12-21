@@ -373,7 +373,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         setShowEditMemberModal(true);
     };
 
-    const submitEditMember = (e: React.FormEvent) => {
+    const submitEditMember = async (e: React.FormEvent) => {
         e.preventDefault();
 
         const updatedMember: Member = {
@@ -387,8 +387,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 address: editNomineeForm.address
             } : undefined
         };
-        onUpdateMember(updatedMember);
-        setShowEditMemberModal(false);
+
+        try {
+            await onUpdateMember(updatedMember);
+            setShowEditMemberModal(false);
+        } catch (err) {
+            console.error("Save failed", err);
+        }
     };
 
     const submitEditAccount = (e: React.FormEvent) => { e.preventDefault(); if (!editingAccount) return; const updatedAccount: Account = { ...editingAccount, status: editAccountForm.status as AccountStatus, interestRate: parseFloat(editAccountForm.interestRate), maturityDate: editAccountForm.maturityDate || undefined, lowBalanceAlertThreshold: editAccountForm.lowBalanceThreshold ? parseFloat(editAccountForm.lowBalanceThreshold) : undefined }; onUpdateAccount(updatedAccount); setShowEditAccountModal(false); };

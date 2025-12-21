@@ -534,23 +534,37 @@ const App: React.FC = () => {
     };
 
     const handleUpdateMember = async (updatedMember: Member) => {
-        setMembers(prevMembers => prevMembers.map(m => m.id === updatedMember.id ? updatedMember : m));
-        setSelectedMember(updatedMember);
-        await upsertMember(updatedMember);
+        const originalMembers = [...members];
+        const originalSelected = selectedMember;
 
-        if (updatedMember.status === 'Suspended') {
-            const accountsToSuspend: Account[] = [];
-            setAccounts(prevAccounts => prevAccounts.map(a => {
-                if (a.memberId === updatedMember.id && a.status === AccountStatus.ACTIVE) {
-                    const updated = { ...a, status: AccountStatus.DORMANT as AccountStatus };
-                    accountsToSuspend.push(updated);
-                    return updated;
+        try {
+            // Optimistic update
+            setMembers(prevMembers => prevMembers.map(m => m.id === updatedMember.id ? updatedMember : m));
+            setSelectedMember(updatedMember);
+
+            await upsertMember(updatedMember);
+
+            if (updatedMember.status === 'Suspended') {
+                const accountsToSuspend: Account[] = [];
+                setAccounts(prevAccounts => prevAccounts.map(a => {
+                    if (a.memberId === updatedMember.id && a.status === AccountStatus.ACTIVE) {
+                        const updated = { ...a, status: AccountStatus.DORMANT as AccountStatus };
+                        accountsToSuspend.push(updated);
+                        return updated;
+                    }
+                    return a;
+                }));
+                for (const acc of accountsToSuspend) {
+                    await upsertAccount(acc);
                 }
-                return a;
-            }));
-            for (const acc of accountsToSuspend) {
-                await upsertAccount(acc);
             }
+        } catch (e) {
+            console.error("Failed to update member", e);
+            // Revert on failure
+            setMembers(originalMembers);
+            setSelectedMember(originalSelected);
+            alert("Failed to save member changes. Please check your connection and try again.");
+            throw e;
         }
     };
 

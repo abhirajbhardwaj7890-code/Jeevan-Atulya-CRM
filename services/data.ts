@@ -73,7 +73,7 @@ const mapMemberToDB = (m: Member) => ({
     father_name: m.fatherName,
     email: m.email,
     phone: m.phone,
-    address: m.currentAddress,
+    // Note: We are phasing out the 'address' column in favor of 'current_address' and 'permanent_address'
     permanent_address: m.permanentAddress,
     current_address: m.currentAddress,
     city: m.city,
@@ -488,15 +488,24 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
 
 export const upsertMember = async (member: Member) => {
     if (!isSupabaseConfigured()) {
+        console.warn("[PERSISTENCE] Volatile (Memory) Mode Active - Member Save Hidden on Refresh");
         console.log("[Volatile] Saving Member", member.fullName);
         const cache = getMemoryCache();
         const idx = cache.members.findIndex((m: Member) => m.id === member.id);
         if (idx >= 0) cache.members[idx] = member; else cache.members.push(member);
         return;
     }
+    
+    console.log("[PERSISTENCE] Saving member to Supabase:", member.id);
     const supabase = getSupabaseClient();
-    const { error } = await supabase.from('members').upsert(mapMemberToDB(member));
-    if (error) throw error;
+    const mappedData = mapMemberToDB(member);
+    const { error } = await supabase.from('members').upsert(mappedData);
+    
+    if (error) {
+        console.error("[PERSISTENCE] Supabase Member Upsert Error:", error.message, error.details);
+        throw new Error(`Failed to save member: ${error.message}`);
+    }
+    console.log("[PERSISTENCE] Member saved successfully:", member.id);
 };
 
 export const bulkUpsertMembers = async (members: Member[]) => {
