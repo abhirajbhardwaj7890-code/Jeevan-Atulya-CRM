@@ -738,6 +738,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const getReceipt = () => {
             if (isRD) {
                 // RD/DD Format
+                // Calculate installment count (number of successful credits)
+                const installmentCount = acc.transactions.filter(t => t.type === 'credit').length;
+                const freqLabel = acc.rdFrequency === 'Daily' ? 'Days' : 'Months';
+                const countDisplay = `${acc.rdFrequency === 'Daily' ? 'DD' : 'RD'}/${installmentCount} ${freqLabel}`;
+
                 return `
                 <div class="receipt-box rd-receipt">
                     <div class="header">
@@ -749,12 +754,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     </div>
 
                     <div class="info-grid">
-                        <div class="info-row"><span>Receipt No.</span> : <strong>${tx.id.split('-').pop()}</strong></div>
                         <div class="info-row"><span>Rcpt.Date:</span> : ${dateStr}</div>
-                        <div class="info-row"><span>Recd. from</span> : ${mem.fullName.toUpperCase()}</div>
                         <div class="info-row"><span>M.No.</span> : ${mem.id.split('-').pop()}</div>
-                        <div class="info-row"><span>F/H Name</span> : ${mem.fatherName || '-'}</div>
+                        <div class="info-row"><span>Recd. from</span> : ${mem.fullName.toUpperCase()}</div>
                         <div class="info-row"><span>Recd. Mode</span> : By ${tx.paymentMethod || 'Cash'}</div>
+                        <div class="info-row"><span>F/H Name</span> : ${mem.fatherName || '-'}</div>
                     </div>
 
                     <table class="particulars-table">
@@ -767,8 +771,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                         <tbody>
                             <tr>
                                 <td style="font-size: 9px; line-height: 1.2;">
-                                    ${acc.accountNumber} Rate: ${acc.interestRate || 0}% Dep.Amt: ${acc.originalAmount || 0}<br/>
-                                    ${acc.rdFrequency || 'Daily'} Installment
+                                    ${countDisplay} Rate: ${acc.interestRate || 0}% Dep.Amt: ${acc.originalAmount || 0}<br/>
+                                    A/c No: ${acc.accountNumber}
                                 </td>
                                 <td style="text-align: right; vertical-align: top;">${tx.amount.toFixed(2)}</td>
                             </tr>

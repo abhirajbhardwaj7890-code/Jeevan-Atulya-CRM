@@ -17,7 +17,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const [isSaving, setIsSaving] = useState(false);
 
     // Import State
-    const [importType, setImportType] = useState<'members' | 'accounts' | 'staff'>('members');
+    const [importType, setImportType] = useState<'members' | 'accounts' | 'staff' | 'transactions'>('members');
     const [previewData, setPreviewData] = useState<any[]>([]);
     const [page, setPage] = useState(1);
     const pageSize = 50;
@@ -54,6 +54,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const MEMBER_COLS = ['member_id', 'full_name', 'father_name', 'phone', 'current_address', 'join_date', 'email'];
     const ACCOUNT_COLS = ['member_id', 'account_type', 'opening_balance', 'opening_date'];
     const STAFF_COLS = ['name', 'phone', 'member_id', 'branch_id', 'commission_fee'];
+    const TRANSACTION_COLS = ['account_no', 'type', 'amount', 'date', 'description', 'payment_method', 'utr'];
 
     const handlePaste = (text: string) => {
         if (!text.trim()) return;
@@ -61,7 +62,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         const lines = text.split('\n').filter(l => l.trim());
         if (lines.length === 0) return;
 
-        const cols = importType === 'members' ? MEMBER_COLS : (importType === 'accounts' ? ACCOUNT_COLS : STAFF_COLS);
+        const cols = importType === 'members' ? MEMBER_COLS :
+            (importType === 'accounts' ? ACCOUNT_COLS :
+                (importType === 'transactions' ? TRANSACTION_COLS : STAFF_COLS));
 
         // Determine start position
         let startRow = focusedCell?.row ?? (previewData.length > 0 ? 0 : 0);
@@ -163,6 +166,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         opening_balance: lookup.openingbalance || lookup.balance || lookup.amount || '',
                         opening_date: lookup.openingdate || lookup.date || ''
                     };
+                } else if (importType === 'transactions') {
+                    return {
+                        account_no: lookup.accountno || lookup.accountnumber || lookup.accno || '',
+                        type: lookup.type || lookup.txtype || 'credit',
+                        amount: lookup.amount || lookup.amt || '',
+                        date: lookup.date || lookup.txdate || '',
+                        description: lookup.description || lookup.particulars || '',
+                        payment_method: lookup.paymentmethod || lookup.mode || 'Cash',
+                        utr: lookup.utr || lookup.utrnumber || ''
+                    };
                 } else {
                     return {
                         name: lookup.name || lookup.fullname || lookup.staffname || lookup.agentname || '',
@@ -184,7 +197,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         ? { member_id: '', full_name: '', father_name: '', phone: '', current_address: '', join_date: '', email: '' }
                         : (importType === 'accounts'
                             ? { member_id: '', account_type: 'Optional Deposit', opening_balance: '', opening_date: '' }
-                            : { name: '', phone: '', member_id: '', branch_id: 'BR-MAIN', commission_fee: '' }
+                            : (importType === 'transactions'
+                                ? { account_no: '', type: 'credit', amount: '', date: '', description: '', payment_method: 'Cash', utr: '' }
+                                : { name: '', phone: '', member_id: '', branch_id: 'BR-MAIN', commission_fee: '' }
+                            )
                         );
                 }
 
@@ -276,6 +292,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             _linkedMemberId: linkedMember.id
                         });
                     }
+                }
+            } else if (importType === 'transactions') {
+                const accNo = row.account_no || row.accountnumber || row.accno;
+                const amt = row.amount || row.amt;
+                if (!accNo || !amt) {
+                    errors.push(`Row ${rowNum}: Skipped - Missing Account Number or Amount.`);
+                } else {
+                    validRows.push({
+                        account_no: String(accNo),
+                        type: (row.type || 'credit').toLowerCase().includes('deb') ? 'debit' : 'credit',
+                        amount: parseFloat(String(amt)) || 0,
+                        date: row.date || row.txdate || new Date().toISOString().split('T')[0],
+                        description: row.description || row.particulars || 'Imported Transaction',
+                        payment_method: row.payment_method || row.mode || 'Cash',
+                        utr: row.utr || row.utrnumber || ''
+                    });
                 }
             } else {
                 // STAFF VALIDATION
@@ -396,6 +428,39 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     setImportLogs([{ name: "All Records", error: err.message || "Bulk import failed. Ensure all Member IDs exist in the database first." }]);
                     failCount = accountsToImport.length;
                 }
+            } else if (importType === 'transactions') {
+                const txsToImport: { transaction: Transaction, accountId: string }[] = [];
+                const allAccounts = members.flatMap(m => m.accounts || []);
+
+                previewData.forEach(row => {
+                    const acc = allAccounts.find(a => a.accountNumber === row.account_no);
+                    if (acc) {
+                        const newTx: Transaction = {
+                            id: `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+                            amount: row.amount,
+                            type: row.type as 'credit' | 'debit',
+                            date: normalizeDate(row.date),
+                            description: row.description,
+                            paymentMethod: row.payment_method,
+                            utrNumber: row.utr || undefined
+                        };
+                        txsToImport.push({ transaction: newTx, accountId: acc.id });
+                    } else {
+                        failCount++;
+                        setImportLogs(prev => [...prev, { name: row.account_no, error: "Account not found" }]);
+                    }
+                });
+
+                if (txsToImport.length > 0) {
+                    try {
+                        await bulkUpsertTransactions(txsToImport);
+                        count = txsToImport.length;
+                    } catch (err: any) {
+                        console.error("Bulk Transaction Import Failed", err);
+                        setImportLogs(prev => [...prev, { name: "Batch", error: err.message || "Database rejected bulk txn import." }]);
+                        failCount += txsToImport.length;
+                    }
+                }
             } else {
                 // STAFF IMPORT
                 const agentsToImport: any[] = previewData.map(row => ({
@@ -444,6 +509,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
             content = "legacy_id,full_name,phone,join_date,address,father_name,email\n1001,John Doe,9876543210,2022-01-15,123 Main St,Father Doe,john@example.com";
         } else if (importType === 'accounts') {
             content = "member_phone,account_type,opening_balance,opening_date\n9876543210,Share Capital,500,2022-01-15\n9876543210,Optional Deposit,5000,2022-02-01";
+        } else if (importType === 'transactions') {
+            content = "account_no,type,amount,date,description,payment_method,utr\n1-SH-1,credit,100,2024-01-01,Monthly Deposit,Cash,";
         } else {
             content = "name,phone,member_id,branch_id,commission_fee\nStaff Name,9999999999,,BR-MAIN,100";
         }
@@ -567,6 +634,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                 Accounts
                             </button>
                             <button
+                                onClick={() => { setImportType('transactions'); setPreviewData([]); setPage(1); }}
+                                className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'transactions' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
+                            >
+                                Transactions
+                            </button>
+                            <button
                                 onClick={() => { setImportType('staff'); setPreviewData([]); setPage(1); }}
                                 className={`px-4 py-1 rounded-md text-xs font-bold transition-colors ${importType === 'staff' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'}`}
                             >
@@ -684,6 +757,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 <th className="p-2 border border-slate-200 min-w-[100px]">Balance</th>
                                                 <th className="p-2 border border-slate-200 min-w-[100px]">Open Date</th>
                                             </>
+                                        ) : importType === 'transactions' ? (
+                                            <>
+                                                <th className="p-2 border border-slate-200 min-w-[120px]">Account No.</th>
+                                                <th className="p-2 border border-slate-200 min-w-[80px]">Type</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Amount</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Date</th>
+                                                <th className="p-2 border border-slate-200 min-w-[150px]">Description</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">Method</th>
+                                                <th className="p-2 border border-slate-200 min-w-[100px]">UTR</th>
+                                            </>
                                         ) : (
                                             <>
                                                 <th className="p-2 border border-slate-200 min-w-[150px]">Staff Name</th>
@@ -730,6 +813,21 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                     <td className="border border-slate-200 p-0"><input type="number" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_balance || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_balance' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_balance = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0"><input type="text" placeholder="DD-MM-YYYY" className="w-full h-full p-2 outline-none bg-transparent" value={row.opening_date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'opening_date' })} onChange={(e) => { const n = [...previewData]; n[idx].opening_date = e.target.value; setPreviewData(n); }} /></td>
                                                 </>
+                                            ) : importType === 'transactions' ? (
+                                                <>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.account_no || ''} onFocus={() => setFocusedCell({ row: idx, col: 'account_no' })} onChange={(e) => { const n = [...previewData]; n[idx].account_no = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0">
+                                                        <select className="w-full h-full p-2 outline-none bg-transparent" value={row.type || 'credit'} onFocus={() => setFocusedCell({ row: idx, col: 'type' })} onChange={(e) => { const n = [...previewData]; n[idx].type = e.target.value; setPreviewData(n); }}>
+                                                            <option value="credit">Credit (+)</option>
+                                                            <option value="debit">Debit (-)</option>
+                                                        </select>
+                                                    </td>
+                                                    <td className="border border-slate-200 p-0"><input type="number" className="w-full h-full p-2 outline-none bg-transparent" value={row.amount || ''} onFocus={() => setFocusedCell({ row: idx, col: 'amount' })} onChange={(e) => { const n = [...previewData]; n[idx].amount = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" placeholder="DD-MM-YYYY" className="w-full h-full p-2 outline-none bg-transparent" value={row.date || ''} onFocus={() => setFocusedCell({ row: idx, col: 'date' })} onChange={(e) => { const n = [...previewData]; n[idx].date = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.description || ''} onFocus={() => setFocusedCell({ row: idx, col: 'description' })} onChange={(e) => { const n = [...previewData]; n[idx].description = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.payment_method || ''} onFocus={() => setFocusedCell({ row: idx, col: 'payment_method' })} onChange={(e) => { const n = [...previewData]; n[idx].payment_method = e.target.value; setPreviewData(n); }} /></td>
+                                                    <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.utr || ''} onFocus={() => setFocusedCell({ row: idx, col: 'utr' })} onChange={(e) => { const n = [...previewData]; n[idx].utr = e.target.value; setPreviewData(n); }} /></td>
+                                                </>
                                             ) : (
                                                 <>
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.name || ''} onFocus={() => setFocusedCell({ row: idx, col: 'name' })} onChange={(e) => { const n = [...previewData]; n[idx].name = e.target.value; setPreviewData(n); }} /></td>
@@ -738,7 +836,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.branch_id || ''} onFocus={() => setFocusedCell({ row: idx, col: 'branch_id' })} onChange={(e) => { const n = [...previewData]; n[idx].branch_id = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0"><input type="number" className="w-full h-full p-2 outline-none bg-transparent" value={row.commission_fee || ''} onFocus={() => setFocusedCell({ row: idx, col: 'commission_fee' })} onChange={(e) => { const n = [...previewData]; n[idx].commission_fee = e.target.value; setPreviewData(n); }} /></td>
                                                 </>
-                                            )}
+                                            )
+                                            }
                                             <td className="p-1 border border-slate-200 text-center">
                                                 <button
                                                     onClick={() => { const n = [...previewData]; n.splice(idx, 1); setPreviewData(n); }}
@@ -752,7 +851,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                                     {previewData.length > page * pageSize && (
                                         <tr>
-                                            <td colSpan={importType === 'members' ? 8 : (importType === 'accounts' ? 5 : 6)} className="p-4 text-center">
+                                            <td colSpan={importType === 'members' ? 8 : (importType === 'accounts' ? 5 : (importType === 'transactions' ? 8 : 6))} className="p-4 text-center">
                                                 <button
                                                     onClick={() => setPage(p => p + 1)}
                                                     className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg font-bold text-xs"
