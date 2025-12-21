@@ -127,6 +127,7 @@ export interface Account {
   transactions: Transaction[];
   guarantors?: Guarantor[];
   lowBalanceAlertThreshold?: number; // New field for alerts
+  createdAt?: string; // Metadata from database
 }
 
 export interface Interaction {

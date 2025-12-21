@@ -1000,24 +1000,32 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             const today = new Date().toISOString().split('T')[0];
             const currentMonth = today.substring(0, 7); // YYYY-MM
 
-            // Check Frequency
-            if (account.rdFrequency === 'Daily') {
-                const alreadyDepositedToday = account.transactions
-                    .filter(t => t.type === 'credit' && t.date === today)
-                    .reduce((sum, t) => sum + t.amount, 0);
+            if (account.type === AccountType.RECURRING_DEPOSIT) {
+                const startDateStr = account.createdAt || member.joinDate;
+                const startDate = new Date(startDateStr);
+                const todayDate = new Date();
 
-                if (alreadyDepositedToday + amt > installment) {
-                    alert(`Daily Deposit Limit Exceeded! \nInstallment: ${formatCurrency(installment)} \nAlready deposited today: ${formatCurrency(alreadyDepositedToday)} \nRequested: ${formatCurrency(amt)}`);
-                    return;
+                let periodsPassed = 0;
+                if (account.rdFrequency === 'Daily') {
+                    const diffTime = todayDate.getTime() - startDate.getTime();
+                    periodsPassed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                } else {
+                    periodsPassed = (todayDate.getFullYear() - startDate.getFullYear()) * 12 + (todayDate.getMonth() - startDate.getMonth());
                 }
-            } else {
-                // Monthly
-                const alreadyDepositedThisMonth = account.transactions
-                    .filter(t => t.type === 'credit' && t.date.startsWith(currentMonth))
+
+                const totalInstallmentsDueCount = Math.max(0, periodsPassed) + 1;
+                const totalAmountShouldHaveBeenPaid = totalInstallmentsDueCount * installment;
+                const totalActuallyPaid = account.transactions
+                    .filter(t => t.type === 'credit')
                     .reduce((sum, t) => sum + t.amount, 0);
 
-                if (alreadyDepositedThisMonth + amt > installment) {
-                    alert(`Monthly Deposit Limit Exceeded! \nInstallment: ${formatCurrency(installment)} \nAlready deposited this month: ${formatCurrency(alreadyDepositedThisMonth)} \nRequested: ${formatCurrency(amt)}`);
+                const amountDueNow = totalAmountShouldHaveBeenPaid - totalActuallyPaid;
+
+                // If they are ahead of schedule, we still allow paying one installment for the future
+                const maxAllowedNow = Math.max(installment, amountDueNow);
+
+                if (amt > maxAllowedNow) {
+                    alert(`Deposit Limit Exceeded! \nInstallment: ${formatCurrency(installment)} \nBacklog Due: ${formatCurrency(Math.max(0, amountDueNow))} \nMax Allowed Now: ${formatCurrency(maxAllowedNow)} \nRequested: ${formatCurrency(amt)}`);
                     return;
                 }
             }
@@ -1135,6 +1143,46 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         e.preventDefault();
         const openingBalance = parseFloat(accountForm.amount) || 0;
 
+        // EMERGENCY LOAN FEES CHECK (700rs from Optional Deposit)
+        if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY) {
+            const odAccount = accounts.find(a => a.type === AccountType.OPTIONAL_DEPOSIT);
+            const feeAmount = 700;
+
+            if (!odAccount) {
+                alert("Optional Deposit account not found. Member must have an Optional Deposit account to pay processing fees.");
+                return;
+            }
+
+            if (odAccount.balance < feeAmount) {
+                alert("Not enough balance in Optional deposit");
+                return;
+            }
+
+            // Deduct from Optional Deposit
+            const feeTx: Transaction = {
+                id: `TX-FEE-${Date.now()}`,
+                amount: feeAmount,
+                type: 'debit',
+                description: `Processing fee for Emergency Loan - ${openingBalance}`,
+                date: new Date().toISOString().split('T')[0],
+                paymentMethod: 'Cash' // Internal transfer basically
+            };
+            onAddTransaction(odAccount.id, feeTx);
+
+            // Add to Ledger as Income
+            onAddLedgerEntry({
+                id: `LDG-FEES-${Date.now()}`,
+                memberId: member.id,
+                date: new Date().toISOString().split('T')[0],
+                description: `Loan Fees (Emergency) - ${member.fullName} | Deduct from OD | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
+                amount: feeAmount,
+                type: 'Income',
+                category: 'Loan Processing Fees',
+                cashAmount: feeAmount,
+                onlineAmount: 0
+            });
+        }
+
         const finalGuarantors: Guarantor[] = [];
         if (accountForm.type === AccountType.LOAN) {
             if (guarantors.g1Name) finalGuarantors.push({ name: guarantors.g1Name, phone: guarantors.g1Phone, relation: guarantors.g1Rel });
@@ -1168,21 +1216,6 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             accountNumber: 'Generated...',
             amount: openingBalance
         });
-
-        // LOAN FEES LOGIC (700rs for Emergency Loans)
-        if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY) {
-            onAddLedgerEntry({
-                id: `LDG-FEES-${Date.now()}`,
-                memberId: member.id,
-                date: new Date().toISOString().split('T')[0],
-                description: `Loan Fees (Emergency) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
-                amount: 700,
-                type: 'Income',
-                category: 'Loan Processing Fees',
-                cashAmount: 700, // Default to cash
-                onlineAmount: 0
-            });
-        }
     };
 
     const closeAccountModal = () => {

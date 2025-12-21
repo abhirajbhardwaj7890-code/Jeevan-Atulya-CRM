@@ -116,6 +116,7 @@ export const mapAccountFromDB = (a: any): Account => {
         rdFrequency: a.rd_frequency,
         guarantors: a.guarantors || [],
         lowBalanceAlertThreshold: a.low_balance_alert_threshold,
+        createdAt: a.created_at,
         transactions: a.transactions ? a.transactions.map((t: any) => ({
             id: t.id,
             date: t.date,
