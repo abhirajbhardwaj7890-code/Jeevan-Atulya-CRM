@@ -38,7 +38,7 @@ export const MOCK_NOTIFICATIONS: Notification[] = [
 
 // --- Data Mappers (CamelCase <-> Snake_Case) ---
 
-const mapMemberFromDB = (m: any): Member => ({
+export const mapMemberFromDB = (m: any): Member => ({
     id: m.id,
     fullName: m.full_name,
     fatherName: m.father_name,
@@ -97,7 +97,7 @@ const mapMemberToDB = (m: Member) => ({
     } : null
 });
 
-const mapAccountFromDB = (a: any): Account => {
+export const mapAccountFromDB = (a: any): Account => {
     const result: Account = {
         id: a.id,
         memberId: a.member_id,
@@ -180,7 +180,7 @@ const mapAccountToDB = (a: Account) => ({
     low_balance_alert_threshold: a.lowBalanceAlertThreshold ?? null
 });
 
-const mapInteractionFromDB = (i: any): Interaction => ({
+export const mapInteractionFromDB = (i: any): Interaction => ({
     id: i.id,
     memberId: i.member_id,
     date: i.date,
@@ -200,7 +200,7 @@ const mapInteractionToDB = (i: Interaction) => ({
     sentiment: i.sentiment
 });
 
-const mapLedgerFromDB = (l: any): LedgerEntry => ({
+export const mapLedgerFromDB = (l: any): LedgerEntry => ({
     id: l.id,
     date: l.date,
     description: l.description,
@@ -495,12 +495,12 @@ export const upsertMember = async (member: Member) => {
         if (idx >= 0) cache.members[idx] = member; else cache.members.push(member);
         return;
     }
-    
+
     console.log("[PERSISTENCE] Saving member to Supabase:", member.id);
     const supabase = getSupabaseClient();
     const mappedData = mapMemberToDB(member);
     const { error } = await supabase.from('members').upsert(mappedData);
-    
+
     if (error) {
         console.error("[PERSISTENCE] Supabase Member Upsert Error:", error.message, error.details);
         throw new Error(`Failed to save member: ${error.message}`);

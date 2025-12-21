@@ -570,11 +570,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const shareAcc = accounts.find(a => a.type === AccountType.SHARE_CAPITAL);
         const cdAcc = accounts.find(a => a.type === AccountType.COMPULSORY_DEPOSIT);
 
-        // IMPORTANT: Registration receipt should ALWAYS show original registration amounts, not current balances
-        // Use originalAmount (set during activation) or fallback to form values during initial activation
         const fees = { building: 450, welfare: 400, entry: 100 };
-        const smAmount = shareAcc?.originalAmount ?? activateForm.shareMoney ?? 0;
-        const cdAmount = cdAcc?.originalAmount ?? activateForm.compulsoryDeposit ?? 0;
+        const smAmount = shareAcc?.originalAmount ?? 400;
+        const cdAmount = cdAcc?.originalAmount ?? 200;
 
         const totalAmount = overrideAmount || (fees.building + fees.welfare + fees.entry + smAmount + cdAmount);
         const amountInWords = numberToWords(totalAmount);
@@ -582,9 +580,16 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const numId = member.id.replace(/\D/g, '');
 
         // Payment Mode String Logic
-        let paymentModeStr = `Pay. Mode: ${activateForm.paymentMethod}`;
-        if (activateForm.paymentMethod === 'Both') {
-            paymentModeStr = `Cash (₹${activateForm.cashAmount}) Online (₹${activateForm.onlineAmount})`;
+        let paymentModeStr = `Cash`; // Default fallback
+        const initTx = shareAcc?.transactions?.[shareAcc.transactions.length - 1];
+        if (initTx?.paymentMethod) {
+            paymentModeStr = initTx.paymentMethod;
+            if (initTx.paymentMethod === 'Both') {
+                paymentModeStr = `Cash (${initTx.cashAmount || ''}) Online (${initTx.onlineAmount || ''})`;
+            }
+            if (initTx.utrNumber) {
+                paymentModeStr += ` UTR:${initTx.utrNumber}`;
+            }
         }
 
         const items = [
@@ -603,22 +608,22 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 <div style="clear:both"></div>
             </div>
             
-            <div style="text-align:center; position:relative; margin-top: 5px;">
-                <span style="font-size:16px; font-weight:bold; letter-spacing: 2px;">RECEIPT</span>
-                <span style="position:absolute; right:0; top:5px; font-size:10px;">${copyType}</span>
+            <div style="text-align:center; position:relative; margin-top: 2px;">
+                <span style="font-size:12px; font-weight:bold; letter-spacing: 2px;">RECEIPT</span>
+                <span style="position:absolute; right:0; top:2px; font-size:10px;">${copyType}</span>
             </div>
 
-            <div style="text-align:center; font-weight:bold; font-size:14px; margin-top:5px;">
+            <div style="text-align:center; font-weight:bold; font-size:11px; margin-top:2px;">
                 JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.
             </div>
-            <div style="text-align:center; font-size:10px;">
+            <div style="text-align:center; font-size:9px; margin-bottom: 8px;">
                 E-287/8, PUL PEHLADPUR, DELHI-110044
             </div>
 
             <div class="info-grid">
                 <div class="row">
                     <div class="cell"><span class="lbl">Receipt No.</span> : <b>${member.id}</b></div>
-                    <div class="cell right"><span class="lbl">Rcpt.Date</span> : ${dateStr}</div>
+                    <div class="cell right"><span class="lbl">Rcpt.Date</span>: ${dateStr}</div>
                 </div>
                 <div class="row">
                     <div class="cell"><span class="lbl">Recd. from</span> : <b>${member.fullName}</b></div>
@@ -644,6 +649,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                             <span class="p-val">${i.val.toFixed(2)}</span>
                         </div>
                     ` : '').join('')}
+                    <div class="p-row" style="margin-top:2px; font-size: 8px; color: #444;">
+                        Freezed by : ADMIN on dated : ${dateStr}
+                    </div>
                 </div>
                 <div class="p-total">
                     ${totalAmount.toFixed(2)}
@@ -667,7 +675,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     <div>Administrator</div>
                 </div>
             </div>
-            <div style="text-align:center; font-size:10px; margin-top:5px;">Have a Nice Day</div>
+            <div style="text-align:center; font-size:9px; margin-top:10px;">Have a Nice Day</div>
         </div>
     `;
 
@@ -676,51 +684,57 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         <head>
           <title>Registration Receipt</title>
           <style>
-            @page { size: landscape; margin: 5mm; }
-            body { font-family: Arial, sans-serif; font-size: 11px; margin: 0; padding: 0; color: #000; }
-            .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; }
-            .receipt-copy { width: 48%; }
-            .separator { border-right: 1px dashed #000; margin: 0 10px; }
+            @page { size: portrait; margin: 4mm; }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
+            .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; align-items: flex-start; }
+            .receipt-copy { width: 49%; border-right: 1px dashed #ccc; padding-right: 2mm; }
+            .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
             
-            .receipt-box { padding: 10px; display: flex; flex-direction: column; min-height: 400px; position:relative; }
+            .receipt-box { padding: 5px; display: flex; flex-direction: column; min-height: 120mm; position:relative; }
             
-            .header-top { font-size: 10px; font-weight: bold; }
+            .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
             
-            .info-grid { margin-top: 15px; }
-            .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
-            .cell { flex: 1; }
+            .info-grid { margin-top: 5px; }
+            .row { display: flex; justify-content: space-between; margin-bottom: 2px; }
+            .cell { flex: 1; font-size: 10px; }
             .cell.right { text-align: right; }
-            .lbl { display: inline-block; width: 80px; }
+            .lbl { display: inline-block; width: 70px; }
             
-            /* Compact Particulars */
-            .particulars-section { margin-top: 10px; border-top: 1px solid #ccc; border-bottom: 1px solid #000; padding-bottom: 2px; }
-            .p-header { display: flex; justify-content: space-between; border-bottom: 1px solid #ccc; padding: 2px 0; font-weight: bold; margin-bottom: 2px; }
-            .p-row { display: flex; justify-content: space-between; line-height: 1.2; font-size: 11px; }
-            .p-total { text-align: right; font-weight: bold; font-size: 12px; margin-top: 4px; padding-top: 2px; border-top: 1px solid #ccc; }
+            .particulars-section { margin-top: 8px; border-top: 1px solid #000; border-bottom: 1px solid #000; padding: 4px 0; }
+            .p-header { display: flex; justify-content: space-between; font-weight: bold; padding-bottom: 4px; border-bottom: 1px solid #eee; }
+            .p-body { padding: 4px 0; min-height: 80px; }
+            .p-row { display: flex; justify-content: space-between; line-height: 1.4; }
+            .p-total { text-align: right; font-weight: bold; font-size: 12px; margin-top: 5px; border-top: 1px solid #444; padding-top: 4px; }
             
-            .words { margin-top: 10px; font-style: italic; font-size: 11px; font-weight: bold; }
+            .words { margin-top: 10px; font-weight: bold; font-size: 10px; border-top: 1px solid #eee; padding-top: 5px; }
             
-            .auth-for { text-align: right; margin-top: 20px; font-weight: bold; font-size: 10px; }
+            .auth-for { text-align: center; margin-top: 15px; font-weight: bold; font-size: 10px; }
             
-            .footer-bottom { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 30px; }
-            .balances { font-weight: bold; font-size: 10px; }
-            .sigs { text-align: right; font-size: 10px; font-weight: bold; }
+            .footer-bottom { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 25px; }
+            .balances { font-weight: bold; font-size: 10px; border-top: 1.5px solid #000; padding-top: 3px; }
+            .sigs { text-align: right; font-weight: bold; font-size: 10px; }
           </style>
         </head>
         <body>
           <div class="page-container">
             <div class="receipt-copy">
-                ${getReceiptHTML('Office Copy')}
-            </div>
-            <div class="separator"></div>
-            <div class="receipt-copy">
                 ${getReceiptHTML('Member Copy')}
+            </div>
+            <div class="receipt-copy">
+                ${getReceiptHTML('Office Copy')}
             </div>
           </div>
         </body>
         </html>
     `;
-        printViaWindow(htmlContent);
+
+        const printWindow = window.open('', '_blank', 'width=1100,height=800');
+        if (printWindow) {
+            printWindow.document.write(htmlContent);
+            printWindow.document.close();
+            printWindow.focus();
+            setTimeout(() => printWindow.print(), 500);
+        }
     };
 
     const generateReceiptHTML = (tx: Transaction, acc: Account, balanceAfter: number, mem: Member) => {

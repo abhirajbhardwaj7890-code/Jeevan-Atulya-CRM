@@ -295,8 +295,10 @@ const App: React.FC = () => {
         initData();
     }, []);
 
+    const [isRefreshing, setIsRefreshing] = useState(false);
+
     const handleRefresh = async () => {
-        setIsLoaded(false);
+        setIsRefreshing(true);
         try {
             const data = await loadData();
             setMembers(data.members);
@@ -310,7 +312,8 @@ const App: React.FC = () => {
         } catch (e) {
             console.error("Refresh failed", e);
         } finally {
-            setIsLoaded(true);
+            setIsRefreshing(false);
+            if (!isLoaded) setIsLoaded(true);
         }
     };
 
@@ -609,6 +612,7 @@ const App: React.FC = () => {
                         onSwitchRole={setUserRole}
                         onLogout={handleLogout}
                         onRefresh={handleRefresh}
+                        isRefreshing={isRefreshing}
                     />
                 </div>
             )}
