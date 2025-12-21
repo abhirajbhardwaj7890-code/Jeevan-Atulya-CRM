@@ -97,37 +97,68 @@ const mapMemberToDB = (m: Member) => ({
     } : null
 });
 
-const mapAccountFromDB = (a: any): Account => ({
-    id: a.id,
-    memberId: a.member_id,
-    type: a.type as AccountType,
-    accountNumber: a.account_number,
-    balance: Number(a.balance),
-    status: a.status as AccountStatus,
-    interestRate: Number(a.interest_rate),
-    initialInterestRate: a.initial_interest_rate ? Number(a.initial_interest_rate) : Number(a.interest_rate),
-    initialAmount: a.initial_amount ? Number(a.initial_amount) : Number(a.amount || a.original_amount),
-    maturityDate: a.maturity_date,
-    loanType: a.loan_type as LoanType,
-    currency: a.currency,
-    termMonths: a.term_months,
-    odLimit: a.od_limit,
-    rdFrequency: a.rd_frequency,
-    guarantors: a.guarantors || [],
-    lowBalanceAlertThreshold: a.low_balance_alert_threshold,
-    transactions: a.transactions ? a.transactions.map((t: any) => ({
-        id: t.id,
-        date: t.date,
-        dueDate: t.due_date,
-        amount: Number(t.amount),
-        type: t.type,
-        description: t.description,
-        paymentMethod: t.payment_method,
-        cashAmount: t.cash_amount ? Number(t.cash_amount) : undefined,
-        onlineAmount: t.online_amount ? Number(t.online_amount) : undefined,
-        utrNumber: t.utr_number
-    })) : []
-});
+const mapAccountFromDB = (a: any): Account => {
+    const result: Account = {
+        id: a.id,
+        memberId: a.member_id,
+        type: a.type as AccountType,
+        accountNumber: a.account_number,
+        balance: Number(a.balance),
+        status: a.status as AccountStatus,
+        interestRate: Number(a.interest_rate),
+        initialInterestRate: a.initial_interest_rate ? Number(a.initial_interest_rate) : Number(a.interest_rate),
+        initialAmount: a.initial_amount ? Number(a.initial_amount) : Number(a.amount || a.original_amount),
+        maturityDate: a.maturity_date,
+        loanType: a.loan_type as LoanType,
+        currency: a.currency,
+        termMonths: a.term_months,
+        odLimit: a.od_limit,
+        rdFrequency: a.rd_frequency,
+        guarantors: a.guarantors || [],
+        lowBalanceAlertThreshold: a.low_balance_alert_threshold,
+        transactions: a.transactions ? a.transactions.map((t: any) => ({
+            id: t.id,
+            date: t.date,
+            dueDate: t.due_date,
+            amount: Number(t.amount),
+            type: t.type,
+            description: t.description,
+            paymentMethod: t.payment_method,
+            cashAmount: t.cash_amount ? Number(t.cash_amount) : undefined,
+            onlineAmount: t.online_amount ? Number(t.online_amount) : undefined,
+            utrNumber: t.utr_number,
+            category: t.category
+        })) : []
+    };
+
+    // Self-healing: Recalculate balance from transactions to ensure consistency
+    const transactions = result.transactions || [];
+    if (transactions.length > 0) {
+        let calculatedBalance = 0;
+        const isLoan = result.type === AccountType.LOAN;
+
+        transactions.forEach(t => {
+            if (t.category === 'Opening Balance') {
+                calculatedBalance += t.amount;
+                return;
+            }
+
+            if (isLoan) {
+                if (t.type === 'credit') calculatedBalance -= t.amount;
+                else calculatedBalance += t.amount;
+            } else {
+                if (t.type === 'credit') calculatedBalance += t.amount;
+                else calculatedBalance -= t.amount;
+            }
+        });
+
+        if (Math.abs(calculatedBalance - result.balance) > 0.01) {
+            result.balance = calculatedBalance;
+        }
+    }
+
+    return result;
+};
 
 const mapAccountToDB = (a: Account) => ({
     id: a.id,
