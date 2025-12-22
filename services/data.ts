@@ -557,7 +557,6 @@ export const upsertInteraction = async (interaction: Interaction) => {
 
 export const upsertLedgerEntry = async (entry: LedgerEntry) => {
     if (!isSupabaseConfigured()) {
-        console.log("[Volatile] Saving Ledger");
         const cache = getMemoryCache();
         const idx = cache.ledger.findIndex((l: LedgerEntry) => l.id === entry.id);
         if (idx >= 0) cache.ledger[idx] = entry; else cache.ledger.push(entry);
@@ -565,6 +564,16 @@ export const upsertLedgerEntry = async (entry: LedgerEntry) => {
     }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('society_ledger').upsert(mapLedgerToDB(entry));
+    if (error) throw error;
+};
+
+export const bulkUpsertLedgerEntries = async (entries: LedgerEntry[]) => {
+    if (!isSupabaseConfigured()) {
+        for (const e of entries) await upsertLedgerEntry(e);
+        return;
+    }
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('society_ledger').upsert(entries.map(mapLedgerToDB));
     if (error) throw error;
 };
 

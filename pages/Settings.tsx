@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertAgents, MOCK_BRANCHES } from '../services/data';
-import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent } from '../types';
+import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents } from '../services/data';
+import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 
@@ -367,24 +367,68 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         let count = 0;
         let failCount = 0;
 
+        const accountsToImport: Account[] = [];
+        const txsToImport: { transaction: Transaction, accountId: string }[] = [];
+        const ledgerToImport: LedgerEntry[] = [];
+
         try {
             if (importType === 'members') {
-                const membersToImport: Member[] = previewData.map(row => ({
-                    id: row.member_id ? String(row.member_id) : `MEM-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
-                    fullName: row.full_name || "Unknown Member",
-                    phone: String(row.phone || ""),
-                    email: row.email || "",
-                    fatherName: row.father_name || "",
-                    currentAddress: row.current_address || row.address || "",
-                    permanentAddress: row.current_address || row.address || "",
-                    joinDate: normalizeDate(row.join_date),
-                    status: 'Active',
-                    avatarUrl: `https://ui-avatars.com/api/?name=${(row.full_name || "Unknown").replace(' ', '+')}`,
-                    riskScore: 0
-                }));
+                const membersToImport: Member[] = previewData.map(row => {
+                    const memberId = row['ID'] || `MEM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+                    // Automatically create CD and SM accounts for new members
+                    const smAccount = createAccount(memberId, AccountType.SHARE_CAPITAL, 400, undefined, undefined, 1, settings);
+                    const cdAccount = createAccount(memberId, AccountType.COMPULSORY_DEPOSIT, 200, undefined, undefined, 2, settings);
+
+                    accountsToImport.push(smAccount, cdAccount);
+
+                    // Add transactions for initial balances
+                    smAccount.transactions.forEach(tx => txsToImport.push({ transaction: tx, accountId: smAccount.id }));
+                    cdAccount.transactions.forEach(tx => txsToImport.push({ transaction: tx, accountId: cdAccount.id }));
+
+                    // Registration Receipt Document
+                    const regReceiptDoc: MemberDocument = {
+                        id: `DOC-REG-${memberId}`,
+                        name: 'Registration Receipt',
+                        type: 'Receipt',
+                        category: 'Personal',
+                        description: 'Bulk Imported Registration Receipt',
+                        uploadDate: new Date().toISOString().split('T')[0],
+                        url: '#'
+                    };
+
+                    // Ledger Entry for registration
+                    const totalFees = 450 + 400 + 100 + 400 + 200; // Building + Welfare + Entry + SM + CD
+                    ledgerToImport.push({
+                        id: `LDG-REG-${memberId}`,
+                        date: new Date().toISOString().split('T')[0],
+                        description: `Bulk Reg - ${row['Full Name'] || 'Imported Member'}`,
+                        amount: totalFees,
+                        type: 'Income',
+                        category: 'Admission Fees & Deposits'
+                    });
+
+                    return {
+                        id: memberId,
+                        fullName: row['Full Name'] || '',
+                        fatherName: row['Father Name'] || '',
+                        dateOfBirth: row['DOB'] || '',
+                        gender: row['Gender'] || 'Male',
+                        joinDate: row['Join Date'] || new Date().toISOString().split('T')[0],
+                        phone: row['Phone'] || '',
+                        email: row['Email'] || '',
+                        currentAddress: row['Address'] || '',
+                        permanentAddress: row['Address'] || '',
+                        status: 'Active',
+                        documents: [regReceiptDoc]
+                    } as Member;
+                });
 
                 try {
                     await bulkUpsertMembers(membersToImport);
+                    await bulkUpsertAccounts(accountsToImport);
+                    await bulkUpsertTransactions(txsToImport);
+                    await bulkUpsertLedgerEntries(ledgerToImport);
                     count = membersToImport.length;
                 } catch (err: any) {
                     console.error("Bulk Member Import Failed", err);
@@ -392,73 +436,78 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     failCount = membersToImport.length;
                 }
             } else if (importType === 'accounts') {
-                const accountsToImport: Account[] = [];
-                const txsToImport: { transaction: Transaction, accountId: string }[] = [];
+                const accs: Account[] = previewData.map(row => {
+                    const acc = createAccount(
+                        row['Member ID'] || '',
+                        (row['Type'] as AccountType) || AccountType.OPTIONAL_DEPOSIT,
+                        parseFloat(row['Balance']) || 0,
+                        undefined,
+                        undefined,
+                        1,
+                        settings
+                    );
 
-                previewData.forEach(row => {
-                    let type = AccountType.OPTIONAL_DEPOSIT;
-                    const inputType = (row.account_type || '').toLowerCase();
-                    if (inputType.includes('share')) type = AccountType.SHARE_CAPITAL;
-                    else if (inputType.includes('compulsory')) type = AccountType.COMPULSORY_DEPOSIT;
-                    else if (inputType.includes('fixed')) type = AccountType.FIXED_DEPOSIT;
-                    else if (inputType.includes('recurring')) type = AccountType.RECURRING_DEPOSIT;
-                    else if (inputType.includes('loan')) type = AccountType.LOAN;
-
-                    const balance = parseFloat(String(row.opening_balance || '0'));
-                    const memberId = row.member_id || row._linkedMemberId;
-
-                    if (memberId) {
-                        const newAcc = createAccount(memberId, type, balance, undefined, undefined, settings);
-                        const openDate = normalizeDate(row.opening_date);
-                        if (openDate && newAcc.transactions.length > 0) {
-                            newAcc.transactions[0].date = openDate;
-                            newAcc.transactions[0].description = "Opening Balance (Imported)";
-                        }
-                        accountsToImport.push(newAcc);
-                        txsToImport.push({ transaction: newAcc.transactions[0], accountId: newAcc.id });
+                    // Create ledger entry for opening balance if > 0 and not loan
+                    if (acc.balance > 0 && acc.type !== AccountType.LOAN) {
+                        ledgerToImport.push({
+                            id: `LDG-OPEN-${acc.id}`,
+                            date: new Date().toISOString().split('T')[0],
+                            description: `Bulk Open ${acc.type} - ${acc.accountNumber}`,
+                            amount: acc.balance,
+                            type: 'Income',
+                            category: 'Member Deposits'
+                        });
                     }
-                });
 
+                    acc.transactions.forEach(tx => txsToImport.push({ transaction: tx, accountId: acc.id }));
+                    return acc;
+                });
                 try {
-                    await bulkUpsertAccounts(accountsToImport);
+                    await bulkUpsertAccounts(accs);
                     await bulkUpsertTransactions(txsToImport);
-                    count = accountsToImport.length;
+                    await bulkUpsertLedgerEntries(ledgerToImport);
+                    count = accs.length;
                 } catch (err: any) {
                     console.error("Bulk Account Import Failed", err);
                     setImportLogs([{ name: "All Records", error: err.message || "Bulk import failed. Ensure all Member IDs exist in the database first." }]);
-                    failCount = accountsToImport.length;
+                    failCount = accs.length;
                 }
             } else if (importType === 'transactions') {
-                const txsToImport: { transaction: Transaction, accountId: string }[] = [];
-                const allAccounts = members.flatMap(m => m.accounts || []);
+                const txs = previewData.map(row => {
+                    const tx = {
+                        id: `TX-IMP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                        date: row['Date'] || new Date().toISOString().split('T')[0],
+                        amount: parseFloat(row['Amount']) || 0,
+                        type: (row['Type']?.toLowerCase() === 'credit' ? 'credit' : 'debit') as 'credit' | 'debit',
+                        description: row['Description'] || 'Bulk Imported Transaction',
+                        paymentMethod: 'Cash'
+                    } as Transaction;
 
-                previewData.forEach(row => {
-                    const acc = allAccounts.find(a => a.accountNumber === row.account_no);
-                    if (acc) {
-                        const newTx: Transaction = {
-                            id: `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-                            amount: row.amount,
-                            type: row.type as 'credit' | 'debit',
-                            date: normalizeDate(row.date),
-                            description: row.description,
-                            paymentMethod: row.payment_method,
-                            utrNumber: row.utr || undefined
-                        };
-                        txsToImport.push({ transaction: newTx, accountId: acc.id });
-                    } else {
-                        failCount++;
-                        setImportLogs(prev => [...prev, { name: row.account_no, error: "Account not found" }]);
-                    }
+                    // Create ledger entry for each transaction
+                    const account = row['Account ID'] || 'Unknown';
+                    ledgerToImport.push({
+                        id: `LDG-TX-${tx.id}`,
+                        date: tx.date,
+                        description: `Bulk Tx: ${tx.description} (${account})`,
+                        amount: tx.amount,
+                        type: tx.type === 'credit' ? 'Income' : 'Expense',
+                        category: tx.type === 'credit' ? 'Member Deposit' : 'Member Withdrawal'
+                    });
+
+                    return {
+                        transaction: tx,
+                        accountId: row['Account ID'] || ''
+                    };
                 });
-
-                if (txsToImport.length > 0) {
+                if (txs.length > 0) {
                     try {
-                        await bulkUpsertTransactions(txsToImport);
-                        count = txsToImport.length;
+                        await bulkUpsertTransactions(txs);
+                        await bulkUpsertLedgerEntries(ledgerToImport);
+                        count = txs.length;
                     } catch (err: any) {
                         console.error("Bulk Transaction Import Failed", err);
                         setImportLogs(prev => [...prev, { name: "Batch", error: err.message || "Database rejected bulk txn import." }]);
-                        failCount += txsToImport.length;
+                        failCount += txs.length;
                     }
                 }
             } else {
