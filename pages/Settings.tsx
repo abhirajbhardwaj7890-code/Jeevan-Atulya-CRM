@@ -334,7 +334,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         setPreviewData(validRows);
     };
 
-    const normalizeDate = (dateStr: string) => {
+    const normalizeDate = (dateStr: string, enforceMin: boolean = true) => {
         if (!dateStr || dateStr.trim() === "") return new Date().toISOString().split('T')[0];
 
         // Replace all common separators with a standard one
@@ -357,10 +357,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 const normalized = `${year}-${month}-${day}`;
 
                 // Validate minimum date (22/10/2025)
-                const MIN_DATE = '2025-10-22';
-                if (normalized < MIN_DATE) {
-                    console.warn(`Date ${dateStr} (normalized: ${normalized}) is before minimum date 22/10/2025. Using minimum date instead.`);
-                    return MIN_DATE;
+                if (enforceMin) {
+                    const MIN_DATE = '2025-10-22';
+                    if (normalized < MIN_DATE) {
+                        console.warn(`Date ${dateStr} (normalized: ${normalized}) is before minimum date 22/10/2025. Using minimum date instead.`);
+                        return MIN_DATE;
+                    }
                 }
 
                 return normalized;
@@ -386,7 +388,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 const membersToImport: Member[] = previewData.map(row => {
                     const memberId = row.member_id || `MEM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
-                    const openDate = normalizeDate(row.join_date);
+                    // Account Opening Date: Enforce Min Date (22/10/2025)
+                    const openDate = normalizeDate(row.join_date, true);
+
+                    // Member Join Date: Enforce Min Date (Society created 22/10/2025)
+                    const memberJoinDate = normalizeDate(row.join_date, true);
+
                     // Automatically create CD and SM accounts for new members
                     const smAccount = createAccount(memberId, AccountType.SHARE_CAPITAL, 400, undefined, { date: openDate }, 1, settings);
                     const cdAccount = createAccount(memberId, AccountType.COMPULSORY_DEPOSIT, 200, undefined, { date: openDate }, 2, settings);
@@ -425,7 +432,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         fatherName: row.father_name || '',
                         dateOfBirth: row.dateOfBirth || '',
                         gender: row.gender || 'Male',
-                        joinDate: row.join_date || new Date().toISOString().split('T')[0],
+                        joinDate: memberJoinDate, // Use formatted date, allowing historical
                         phone: row.phone || '',
                         email: row.email || '',
                         currentAddress: row.current_address || '',
@@ -488,7 +495,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 const txs = previewData.map(row => {
                     const tx = {
                         id: `TX-IMP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        date: row.date || new Date().toISOString().split('T')[0],
+                        date: normalizeDate(row.date, true), // Normalize and enforce min date
                         amount: parseFloat(row.amount) || 0,
                         type: (row.type?.toLowerCase() === 'credit' ? 'credit' : 'debit') as 'credit' | 'debit',
                         description: row.description || 'Bulk Imported Transaction',

@@ -35,6 +35,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         agentInput: '', // Stores what user types
         residenceType: 'Owned' as 'Owned' | 'Rented',
         status: 'Active' as 'Active' | 'Suspended' | 'Pending',
+        joinDate: new Date().toISOString().split('T')[0], // Default to today
         dateOfBirth: '',
         // Nominee Details
         nomineeName: '',
@@ -106,6 +107,12 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             return;
         }
 
+        // Validate Join Date Check
+        if (formData.joinDate < '2025-10-22') {
+            alert("Join Date cannot be before Society Creation Date (22/10/2025)");
+            return;
+        }
+
         // Agent Validation: If input provided but not resolved
         if (formData.agentInput && !formData.agentId) {
             const confirm = window.confirm("Agent ID entered but not found in system. Continue without assigning an agent?");
@@ -127,7 +134,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             city: formData.city,
             pinCode: formData.pinCode,
             residenceType: formData.residenceType,
-            joinDate: new Date().toISOString().split('T')[0],
+            joinDate: formData.joinDate,
             dateOfBirth: formData.dateOfBirth,
             status: formData.status,
             avatarUrl: `https://ui-avatars.com/api/?name=${formData.firstName}+${formData.lastName}&background=random`,
@@ -156,7 +163,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
                 type: 'Receipt',
                 category: 'Other',
                 description: 'Initial Membership Registration Receipt',
-                uploadDate: new Date().toISOString().split('T')[0],
+                uploadDate: formData.joinDate,
                 url: '#'
             };
             newMember.documents = [regReceiptDoc];
@@ -166,7 +173,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             // Construct Initial Accounts
             const initialAccountStatus = AccountStatus.ACTIVE;
 
-            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, parseFloat(formData.shareMoney as any) || 0, undefined, undefined, 1, settings);
+            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, parseFloat(formData.shareMoney as any) || 0, undefined, { date: formData.joinDate }, 1, settings);
             shareCap.id = `ACC-${newMember.id}-SHR-INIT`;
             if (shareCap.transactions.length > 0) {
                 shareCap.transactions[0].id = `TX-${newMember.id}-SHR-INIT`;
@@ -175,7 +182,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             }
             shareCap.status = initialAccountStatus;
 
-            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, parseFloat(formData.compulsoryDeposit as any) || 0, undefined, undefined, 2, settings);
+            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, parseFloat(formData.compulsoryDeposit as any) || 0, undefined, { date: formData.joinDate }, 2, settings);
             compDep.id = `ACC-${newMember.id}-CD-INIT`;
             if (compDep.transactions.length > 0) {
                 compDep.transactions[0].id = `TX-${newMember.id}-CD-INIT`;
@@ -582,6 +589,21 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
                                     <option value="Suspended">Suspended</option>
                                 </select>
                             </div>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-slate-700 mb-1">
+                                Join Date (Min: 22/10/2025)
+                            </label>
+                            <input
+                                type="date"
+                                className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                value={formData.joinDate}
+                                min="2025-10-22"
+                                onChange={e => setFormData({ ...formData, joinDate: e.target.value })}
+                            />
+                            <p className="text-xs text-slate-500 mt-1">
+                                Official date of joining the society.
+                            </p>
                         </div>
                     </div>
                 )}
