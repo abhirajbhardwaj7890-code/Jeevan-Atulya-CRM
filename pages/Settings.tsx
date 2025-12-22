@@ -444,11 +444,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 });
 
                 try {
-                    await bulkUpsertMembers(membersToImport);
-                    await bulkUpsertAccounts(accountsToImport);
-                    await bulkUpsertTransactions(txsToImport);
-                    await bulkUpsertLedgerEntries(ledgerToImport);
-                    count = membersToImport.length;
+                    // Deduplicate all arrays to prevent "ON CONFLICT DO UPDATE" batch errors
+                    const uniqueMembers = Array.from(new Map(membersToImport.map(m => [m.id, m])).values());
+                    const uniqueAccounts = Array.from(new Map(accountsToImport.map(a => [a.id, a])).values());
+
+                    // Deduplicate transactions by Transaction ID
+                    const uniqueTxs = Array.from(new Map(txsToImport.map(item => [item.transaction.id, item])).values());
+                    const uniqueLedger = Array.from(new Map(ledgerToImport.map(l => [l.id, l])).values());
+
+                    await bulkUpsertMembers(uniqueMembers);
+                    await bulkUpsertAccounts(uniqueAccounts);
+                    await bulkUpsertTransactions(uniqueTxs);
+                    await bulkUpsertLedgerEntries(uniqueLedger);
+                    count = uniqueMembers.length;
                 } catch (err: any) {
                     console.error("Bulk Member Import Failed", err);
                     setImportLogs([{ name: "All Records", error: err.message || "Database rejected bulk import. Possible duplicate ID or missing data." }]);
@@ -482,10 +490,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     return acc;
                 });
                 try {
-                    await bulkUpsertAccounts(accs);
-                    await bulkUpsertTransactions(txsToImport);
-                    await bulkUpsertLedgerEntries(ledgerToImport);
-                    count = accs.length;
+                    // Deduplicate
+                    const uniqueAccs = Array.from(new Map(accs.map(a => [a.id, a])).values());
+                    const uniqueTxs = Array.from(new Map(txsToImport.map(item => [item.transaction.id, item])).values());
+                    const uniqueLedger = Array.from(new Map(ledgerToImport.map(l => [l.id, l])).values());
+
+                    await bulkUpsertAccounts(uniqueAccs);
+                    await bulkUpsertTransactions(uniqueTxs);
+                    await bulkUpsertLedgerEntries(uniqueLedger);
+                    count = uniqueAccs.length;
                 } catch (err: any) {
                     console.error("Bulk Account Import Failed", err);
                     setImportLogs([{ name: "All Records", error: err.message || "Bulk import failed. Ensure all Member IDs exist in the database first." }]);
@@ -528,9 +541,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                 if (txs.length > 0) {
                     try {
-                        await bulkUpsertTransactions(txs);
-                        await bulkUpsertLedgerEntries(ledgerToImport);
-                        count = txs.length;
+                        // Deduplicate
+                        const uniqueTxs = Array.from(new Map(txs.map(item => [item.transaction.id, item])).values());
+                        const uniqueLedger = Array.from(new Map(ledgerToImport.map(l => [l.id, l])).values());
+
+                        await bulkUpsertTransactions(uniqueTxs);
+                        await bulkUpsertLedgerEntries(uniqueLedger);
+                        count = uniqueTxs.length;
                     } catch (err: any) {
                         console.error("Bulk Transaction Import Failed", err);
                         setImportLogs(prev => [...prev, { name: "Batch", error: err.message || "Database rejected bulk txn import." }]);
