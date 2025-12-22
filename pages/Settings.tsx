@@ -8,10 +8,11 @@ interface SettingsPageProps {
     settings: AppSettings;
     onUpdateSettings: (s: AppSettings) => Promise<void>;
     members?: Member[]; // Added for validation
+    accounts?: Account[]; // Added for transaction ID resolution
     onImportSuccess?: () => void;
 }
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], onImportSuccess }) => {
+export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], accounts = [], onImportSuccess }) => {
     const [activeTab, setActiveTab] = useState<'config' | 'import'>('config');
     const [form, setForm] = useState(settings);
     const [isSaving, setIsSaving] = useState(false);
@@ -353,7 +354,16 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
             // Ensure YYYY-MM-DD
             if (day.length === 2 && month.length === 2 && year.length === 4) {
-                return `${year}-${month}-${day}`;
+                const normalized = `${year}-${month}-${day}`;
+
+                // Validate minimum date (22/10/2025)
+                const MIN_DATE = '2025-10-22';
+                if (normalized < MIN_DATE) {
+                    console.warn(`Date ${dateStr} (normalized: ${normalized}) is before minimum date 22/10/2025. Using minimum date instead.`);
+                    return MIN_DATE;
+                }
+
+                return normalized;
             }
         }
 
@@ -376,9 +386,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 const membersToImport: Member[] = previewData.map(row => {
                     const memberId = row.member_id || `MEM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
+                    const openDate = normalizeDate(row.join_date);
                     // Automatically create CD and SM accounts for new members
-                    const smAccount = createAccount(memberId, AccountType.SHARE_CAPITAL, 400, undefined, undefined, 1, settings);
-                    const cdAccount = createAccount(memberId, AccountType.COMPULSORY_DEPOSIT, 200, undefined, undefined, 2, settings);
+                    const smAccount = createAccount(memberId, AccountType.SHARE_CAPITAL, 400, undefined, { date: openDate }, 1, settings);
+                    const cdAccount = createAccount(memberId, AccountType.COMPULSORY_DEPOSIT, 200, undefined, { date: openDate }, 2, settings);
 
                     accountsToImport.push(smAccount, cdAccount);
 
@@ -391,7 +402,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         id: `DOC-REG-${memberId}`,
                         name: 'Registration Receipt',
                         type: 'Receipt',
-                        category: 'Personal',
+                        category: 'Other',
                         description: 'Bulk Imported Registration Receipt',
                         uploadDate: new Date().toISOString().split('T')[0],
                         url: '#'
@@ -443,7 +454,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         (row.account_type as AccountType) || AccountType.OPTIONAL_DEPOSIT,
                         parseFloat(row.opening_balance) || 0,
                         undefined,
-                        undefined,
+                        { date: normalizeDate(row.opening_date) },
                         1,
                         settings
                     );
@@ -495,11 +506,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         category: tx.type === 'credit' ? 'Member Deposit' : 'Member Withdrawal'
                     });
 
+                    const targetAccount = accounts.find(a => a.accountNumber === String(row.account_no));
+                    if (!targetAccount) {
+                        setImportLogs(prev => [...prev, { name: row.account_no || 'Unknown', error: `Account Number ${row.account_no} not found.` }]);
+                        failCount++;
+                        return null;
+                    }
+
                     return {
                         transaction: tx,
-                        accountId: row.account_no || ''
+                        accountId: targetAccount.id
                     };
-                });
+                }).filter(Boolean) as { transaction: Transaction, accountId: string }[];
+
                 if (txs.length > 0) {
                     try {
                         await bulkUpsertTransactions(txs);
@@ -668,6 +687,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             <div>
                                 <p className="font-bold">Bulk Import ({importType})</p>
                                 <p>Copy rows from Excel and Paste (Ctrl+V) anywhere on the grid.</p>
+                                <p className="text-[10px] mt-1 text-blue-600 font-medium">
+                                    <Info className="inline" size={10} /> <strong>Tip:</strong> If importing historical transactions, set account opening balance to 0 to avoid double-counting, or ensure transactions start <em>after</em> the opening date.
+                                </p>
                             </div>
                         </div>
                         <div className="flex bg-white rounded-lg border border-blue-200 p-1">

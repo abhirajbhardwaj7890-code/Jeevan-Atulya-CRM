@@ -288,7 +288,8 @@ export const createAccount = (
         rdFrequency?: 'Monthly' | 'Daily',
         guarantors?: Guarantor[],
         termMonths?: number,  // Added overrides
-        interestRate?: number
+        interestRate?: number,
+        date?: string // Added for bulk import/custom opening dates
     },
     seriesNumber: number = 1,
     settings: AppSettings = DEFAULT_SETTINGS
@@ -381,8 +382,8 @@ export const createAccount = (
         termMonths: term > 0 ? term : undefined,
         guarantors: extra?.guarantors || [],
         transactions: [{
-            id: `TX-${Date.now()}`,
-            date: new Date().toISOString().split('T')[0],
+            id: `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            date: extra?.date || new Date().toISOString().split('T')[0],
             amount: balance,
             type: type === AccountType.LOAN ? 'debit' : 'credit',
             category: type === AccountType.LOAN ? 'Loan Disbursement' : 'Opening Balance',

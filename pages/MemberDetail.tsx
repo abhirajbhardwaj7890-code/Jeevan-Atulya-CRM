@@ -87,6 +87,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         type: 'credit', // credit (Deposit/Repayment) or debit (Withdrawal/Disburse)
         amount: '',
         description: '',
+        date: new Date().toISOString().split('T')[0], // Transaction date (YYYY-MM-DD)
         dueDate: '',
         paymentMethod: 'Cash' as 'Cash' | 'Online' | 'Both',
         cashAmount: '',
@@ -158,7 +159,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         odLimit: '50000',
         rdFrequency: 'Monthly',
         processingFeePercent: '1.0',
-        purpose: '' // Personalization
+        purpose: '', // Personalization
+        openingDate: new Date().toISOString().split('T')[0] // Account opening date (YYYY-MM-DD)
     });
 
     // Activate Member Modal State
@@ -756,10 +758,19 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         const getReceipt = (copyType: string) => {
             if (isRD) {
-                // RD/DD Format
-                const installmentCount = acc.transactions.filter(t => t.type === 'credit').length;
+                // RD/DD Format - Calculate installments paid based on amount
+                const installmentAmount = acc.originalAmount || 0;
+
+                // Calculate total amount paid (all credit transactions)
+                const totalPaid = acc.transactions
+                    .filter(t => t.type === 'credit')
+                    .reduce((sum, t) => sum + t.amount, 0);
+
+                // Calculate number of installments paid
+                const installmentsPaid = installmentAmount > 0 ? Math.floor(totalPaid / installmentAmount) : 0;
+
                 const freqLabel = acc.rdFrequency === 'Daily' ? 'Days' : 'Months';
-                const countDisplay = `${acc.rdFrequency === 'Daily' ? 'DD' : 'RD'}/${installmentCount} ${freqLabel}`;
+                const countDisplay = `${acc.rdFrequency === 'Daily' ? 'DD' : 'RD'}/${installmentsPaid} ${freqLabel}`;
 
                 return `
                 <div class="receipt-box rd-receipt">
@@ -993,11 +1004,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             return;
         }
 
-        // 3. Guard: RD/DD Installment Limits and Frequency
+        // 3. RD/DD Installment Info (No Limit - Allow Backlog Clearance or Future Payments)
         if (type === 'credit' && isRD) {
             const installment = account.originalAmount || 0;
-            const today = new Date().toISOString().split('T')[0];
-            const currentMonth = today.substring(0, 7); // YYYY-MM
 
             if (account.type === AccountType.RECURRING_DEPOSIT) {
                 const startDateStr = account.createdAt || member.joinDate;
@@ -1020,17 +1029,23 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
                 const amountDueNow = totalAmountShouldHaveBeenPaid - totalActuallyPaid;
 
-                // If they are ahead of schedule, we still allow paying one installment for the future
-                const maxAllowedNow = Math.max(installment, amountDueNow);
-
-                if (amt > maxAllowedNow) {
-                    alert(`Deposit Limit Exceeded! \nInstallment: ${formatCurrency(installment)} \nBacklog Due: ${formatCurrency(Math.max(0, amountDueNow))} \nMax Allowed Now: ${formatCurrency(maxAllowedNow)} \nRequested: ${formatCurrency(amt)}`);
-                    return;
+                // Info message only - no limit enforcement
+                if (amountDueNow > 0) {
+                    console.log(`RD Payment Info - Installment: ${formatCurrency(installment)}, Backlog: ${formatCurrency(Math.max(0, amountDueNow))}, Paying: ${formatCurrency(amt)}`);
+                } else {
+                    console.log(`RD Payment Info - Installment: ${formatCurrency(installment)}, Advance Payment: ${formatCurrency(amt)}, No Backlog`);
                 }
+                // No limit check - allow any amount (clears backlog or registers as future installments)
             }
         }
         const txId = `TX-${Date.now()}`;
-        const txDate = new Date().toISOString().split('T')[0];
+        // Validate minimum date (22/10/2025)
+        const MIN_DATE = '2025-10-22';
+        if (transForm.date < MIN_DATE) {
+            alert(`Transaction date cannot be earlier than 22/10/2025.\nSelected date: ${formatDate(transForm.date)}`);
+            return;
+        }
+        const txDate = transForm.date; // Use selected date from form
 
         let newBal = account.balance;
         if (account.type === AccountType.LOAN) {
@@ -1140,6 +1155,14 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
     const submitAccount = (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Validate minimum date (22/10/2025)
+        const MIN_DATE = '2025-10-22';
+        if (accountForm.openingDate < MIN_DATE) {
+            alert(`Account opening date cannot be earlier than 22/10/2025.\nSelected date: ${formatDate(accountForm.openingDate)}`);
+            return;
+        }
+
         const openingBalance = parseFloat(accountForm.amount) || 0;
 
         // EMERGENCY LOAN FEES CHECK (700rs from Optional Deposit)
@@ -1163,7 +1186,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 amount: feeAmount,
                 type: 'debit',
                 description: `Processing fee for Emergency Loan - ${openingBalance}`,
-                date: new Date().toISOString().split('T')[0],
+                date: accountForm.openingDate, // Use opening date for fee transaction
                 paymentMethod: 'Cash' // Internal transfer basically
             };
             onAddTransaction(odAccount.id, feeTx);
@@ -1172,7 +1195,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             onAddLedgerEntry({
                 id: `LDG-FEES-${Date.now()}`,
                 memberId: member.id,
-                date: new Date().toISOString().split('T')[0],
+                date: accountForm.openingDate, // Use opening date
                 description: `Loan Fees (Emergency) - ${member.fullName} | Deduct from OD | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
                 amount: feeAmount,
                 type: 'Income',
@@ -1203,7 +1226,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             maturityDate: calcResult?.maturityDate,
             rdFrequency: accountForm.type === AccountType.RECURRING_DEPOSIT ? accountForm.rdFrequency as any : undefined,
             originalAmount: openingBalance,
-            guarantors: finalGuarantors
+            guarantors: finalGuarantors,
+            openingDate: accountForm.openingDate // Pass opening date
         };
 
         onAddAccount(member.id, newAccountData);
@@ -1362,6 +1386,46 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 matVal = (P * termMonths) + (P * (termMonths * (termMonths + 1) / 2) * (R / 1200));
             }
             rows.push({ label: 'Est. Maturity Value', value: formatCurrency(Math.round(matVal)), icon: PiggyBank, highlight: true });
+
+            // Add RD Installment Status
+            const installment = acc.originalAmount || 0;
+
+            // Use the date of the first transaction (opening balance) as the start date
+            const firstTransaction = acc.transactions
+                .filter(t => t.type === 'credit')
+                .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())[0];
+
+            const startDateStr = firstTransaction?.date || acc.createdAt || member.joinDate;
+            const startDate = new Date(startDateStr);
+            const todayDate = new Date();
+
+            let periodsPassed = 0;
+            if (acc.rdFrequency === 'Daily') {
+                const diffTime = todayDate.getTime() - startDate.getTime();
+                periodsPassed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            } else {
+                periodsPassed = (todayDate.getFullYear() - startDate.getFullYear()) * 12 + (todayDate.getMonth() - startDate.getMonth());
+            }
+
+            const totalInstallmentsDue = Math.max(0, periodsPassed) + 1;
+            const totalAmountDue = totalInstallmentsDue * installment;
+
+            // Include ALL credit transactions (including opening balance)
+            const totalPaid = acc.transactions
+                .filter(t => t.type === 'credit')
+                .reduce((sum, t) => sum + t.amount, 0);
+
+            const installmentsPaid = Math.floor(totalPaid / installment);
+            const backlog = Math.max(0, totalAmountDue - totalPaid);
+            const futurePayments = Math.max(0, totalPaid - totalAmountDue);
+
+            if (backlog > 0) {
+                rows.push({ label: 'Backlog', value: `${formatCurrency(backlog)} (${Math.ceil(backlog / installment)} ${acc.rdFrequency === 'Daily' ? 'days' : 'months'})`, icon: AlertTriangle, highlight: false });
+            } else if (futurePayments > 0) {
+                rows.push({ label: 'Advance Paid', value: `${formatCurrency(futurePayments)} (${Math.floor(futurePayments / installment)} ${acc.rdFrequency === 'Daily' ? 'days' : 'months'})`, icon: CheckCircle, highlight: false });
+            } else {
+                rows.push({ label: 'Status', value: 'Up to Date ✓', icon: CheckCircle, highlight: false });
+            }
         } else if (isLoan) {
             rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
         } else if (isOD) {
@@ -1975,6 +2039,18 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                 />
                                             </div>
                                         )}
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Opening Date</label>
+                                            <input
+                                                type="date"
+                                                className="w-full border p-2 rounded-lg"
+                                                value={accountForm.openingDate}
+                                                min="2025-10-22"
+                                                onChange={e => setAccountForm({ ...accountForm, openingDate: e.target.value })}
+                                            />
+                                            <p className="text-[10px] text-slate-500 mt-1">Format: DD/MM/YYYY • Minimum: 22/10/2025</p>
+                                        </div>
                                     </div>
                                 )}
 
@@ -2293,6 +2369,18 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             value={transForm.description}
                                             onChange={e => setTransForm({ ...transForm, description: e.target.value })}
                                         />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Transaction Date</label>
+                                        <input
+                                            type="date"
+                                            className="w-full border p-2 rounded-lg"
+                                            value={transForm.date}
+                                            min="2025-10-22"
+                                            onChange={e => setTransForm({ ...transForm, date: e.target.value })}
+                                        />
+                                        <p className="text-[10px] text-slate-500 mt-1">Format: DD/MM/YYYY • Minimum: 22/10/2025</p>
                                     </div>
 
                                     <button type="submit" className="w-full py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2">

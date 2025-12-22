@@ -408,15 +408,20 @@ const App: React.FC = () => {
         }
     };
 
-    const handleAddAccount = async (memberId: string, accountData: Partial<Account>) => {
+    const handleAddAccount = async (memberId: string, accountData: Partial<Account> & { openingDate?: string }) => {
         if (!accountData.type) return;
+
+        // Extract opening date (use accountData.openingDate or default to today)
+        const openingDate = accountData.openingDate || new Date().toISOString().split('T')[0];
+
         const currentCount = accounts.filter(a => a.memberId === memberId).length;
         const newAccount = createAccount(memberId, accountData.type, accountData.balance || 0, accountData.loanType, {
             odLimit: accountData.odLimit,
             rdFrequency: accountData.rdFrequency,
             guarantors: accountData.guarantors,
             termMonths: accountData.termMonths,
-            interestRate: accountData.interestRate
+            interestRate: accountData.interestRate,
+            date: openingDate // Pass opening date to createAccount
         }, currentCount + 1, settings);
 
         if (accountData.maturityDate) newAccount.maturityDate = accountData.maturityDate;
@@ -438,7 +443,7 @@ const App: React.FC = () => {
         if ((accountData.balance || 0) > 0 && accountData.type !== AccountType.LOAN) {
             const ledgerEntry: LedgerEntry = {
                 id: `LDG-ACC-${Date.now()}`,
-                date: new Date().toISOString().split('T')[0],
+                date: openingDate, // Use opening date for ledger entry
                 description: `New ${accountData.type} Opening - ${newAccount.accountNumber}`,
                 amount: accountData.balance || 0,
                 type: 'Income',
@@ -727,6 +732,7 @@ const App: React.FC = () => {
                         settings={settings}
                         onUpdateSettings={handleUpdateSettings}
                         members={members}
+                        accounts={accounts}
                         onImportSuccess={handleRefresh}
                     />
                 )}

@@ -128,6 +128,7 @@ export interface Account {
   guarantors?: Guarantor[];
   lowBalanceAlertThreshold?: number; // New field for alerts
   createdAt?: string; // Metadata from database
+  openingDate?: string; // Account opening date
 }
 
 export interface Interaction {
