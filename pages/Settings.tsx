@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents } from '../services/data';
+import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents, MOCK_BRANCHES } from '../services/data';
 import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -374,7 +374,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         try {
             if (importType === 'members') {
                 const membersToImport: Member[] = previewData.map(row => {
-                    const memberId = row['ID'] || `MEM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+                    const memberId = row.member_id || `MEM-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
                     // Automatically create CD and SM accounts for new members
                     const smAccount = createAccount(memberId, AccountType.SHARE_CAPITAL, 400, undefined, undefined, 1, settings);
@@ -402,7 +402,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     ledgerToImport.push({
                         id: `LDG-REG-${memberId}`,
                         date: new Date().toISOString().split('T')[0],
-                        description: `Bulk Reg - ${row['Full Name'] || 'Imported Member'}`,
+                        description: `Bulk Reg - ${row.full_name || 'Imported Member'}`,
                         amount: totalFees,
                         type: 'Income',
                         category: 'Admission Fees & Deposits'
@@ -410,16 +410,17 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                     return {
                         id: memberId,
-                        fullName: row['Full Name'] || '',
-                        fatherName: row['Father Name'] || '',
-                        dateOfBirth: row['DOB'] || '',
-                        gender: row['Gender'] || 'Male',
-                        joinDate: row['Join Date'] || new Date().toISOString().split('T')[0],
-                        phone: row['Phone'] || '',
-                        email: row['Email'] || '',
-                        currentAddress: row['Address'] || '',
-                        permanentAddress: row['Address'] || '',
+                        fullName: row.full_name || '',
+                        fatherName: row.father_name || '',
+                        dateOfBirth: row.dateOfBirth || '',
+                        gender: row.gender || 'Male',
+                        joinDate: row.join_date || new Date().toISOString().split('T')[0],
+                        phone: row.phone || '',
+                        email: row.email || '',
+                        currentAddress: row.current_address || '',
+                        permanentAddress: row.current_address || '',
                         status: 'Active',
+                        avatarUrl: '',
                         documents: [regReceiptDoc]
                     } as Member;
                 });
@@ -438,9 +439,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
             } else if (importType === 'accounts') {
                 const accs: Account[] = previewData.map(row => {
                     const acc = createAccount(
-                        row['Member ID'] || '',
-                        (row['Type'] as AccountType) || AccountType.OPTIONAL_DEPOSIT,
-                        parseFloat(row['Balance']) || 0,
+                        row.member_id || '',
+                        (row.account_type as AccountType) || AccountType.OPTIONAL_DEPOSIT,
+                        parseFloat(row.opening_balance) || 0,
                         undefined,
                         undefined,
                         1,
@@ -476,15 +477,15 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 const txs = previewData.map(row => {
                     const tx = {
                         id: `TX-IMP-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                        date: row['Date'] || new Date().toISOString().split('T')[0],
-                        amount: parseFloat(row['Amount']) || 0,
-                        type: (row['Type']?.toLowerCase() === 'credit' ? 'credit' : 'debit') as 'credit' | 'debit',
-                        description: row['Description'] || 'Bulk Imported Transaction',
-                        paymentMethod: 'Cash'
+                        date: row.date || new Date().toISOString().split('T')[0],
+                        amount: parseFloat(row.amount) || 0,
+                        type: (row.type?.toLowerCase() === 'credit' ? 'credit' : 'debit') as 'credit' | 'debit',
+                        description: row.description || 'Bulk Imported Transaction',
+                        paymentMethod: row.payment_method || 'Cash'
                     } as Transaction;
 
                     // Create ledger entry for each transaction
-                    const account = row['Account ID'] || 'Unknown';
+                    const account = row.account_no || 'Unknown';
                     ledgerToImport.push({
                         id: `LDG-TX-${tx.id}`,
                         date: tx.date,
@@ -496,7 +497,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                     return {
                         transaction: tx,
-                        accountId: row['Account ID'] || ''
+                        accountId: row.account_no || ''
                     };
                 });
                 if (txs.length > 0) {
@@ -855,7 +856,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 <>
                                                     <td className="border border-slate-200 p-0"><input type="text" className="w-full h-full p-2 outline-none bg-transparent" value={row.member_id || ''} onFocus={() => setFocusedCell({ row: idx, col: 'member_id' })} onChange={(e) => { const n = [...previewData]; n[idx].member_id = e.target.value; setPreviewData(n); }} /></td>
                                                     <td className="border border-slate-200 p-0">
-                                                        <select className="w-full h-full p-2 outline-none bg-transparent" value={row.account_type || 'Optional Deposit'} onFocus={() => setFocusedCell({ row: idx, col: 'account_type' })} onChange={(e) => { const n = [...previewData]; n[idx].account_type = e.target.value; setPreviewData(n); }}>
+                                                        <select
+                                                            className="w-full h-full p-2 outline-none bg-transparent"
+                                                            value={row.account_type || 'Optional Deposit'}
+                                                            onFocus={() => setFocusedCell({ row: idx, col: 'account_type' })}
+                                                            onChange={(e) => {
+                                                                const val = e.target.value;
+                                                                const n = [...previewData];
+                                                                if (idx === 0) {
+                                                                    // Auto-fill all subsequent rows if the first row is changed
+                                                                    n.forEach(r => r.account_type = val);
+                                                                } else {
+                                                                    n[idx].account_type = val;
+                                                                }
+                                                                setPreviewData(n);
+                                                            }}
+                                                        >
                                                             {Object.values(AccountType).map(t => <option key={t} value={t}>{t}</option>)}
                                                         </select>
                                                     </td>

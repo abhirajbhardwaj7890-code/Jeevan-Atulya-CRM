@@ -346,7 +346,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         <head>
           <title>Registration Receipt</title>
           <style>
-            @page { size: portrait; margin: 4mm; }
+            @page { size: landscape; margin: 4mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
             .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; align-items: flex-start; }
             .receipt-copy { width: 49%; border-right: 1px dashed #ccc; padding-right: 2mm; }
@@ -380,10 +380,10 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         <body>
           <div class="page-container">
             <div class="receipt-copy">
-                ${getReceiptHTML('Member Copy')}
+                ${getReceiptHTML('MEMBER COPY')}
             </div>
             <div class="receipt-copy">
-                ${getReceiptHTML('Office Copy')}
+                ${getReceiptHTML('OFFICE COPY')}
             </div>
           </div>
         </body>

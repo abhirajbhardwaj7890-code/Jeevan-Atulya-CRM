@@ -684,7 +684,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         <head>
           <title>Registration Receipt</title>
           <style>
-            @page { size: portrait; margin: 4mm; }
+            @page { size: landscape; margin: 4mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
             .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; align-items: flex-start; }
             .receipt-copy { width: 49%; border-right: 1px dashed #ccc; padding-right: 2mm; }
@@ -718,10 +718,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         <body>
           <div class="page-container">
             <div class="receipt-copy">
-                ${getReceiptHTML('Member Copy')}
+                ${getReceiptHTML('MEMBER COPY')}
             </div>
             <div class="receipt-copy">
-                ${getReceiptHTML('Office Copy')}
+                ${getReceiptHTML('OFFICE COPY')}
             </div>
           </div>
         </body>
@@ -754,10 +754,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const otherAccs = accounts.filter(a => a.id !== acc.id);
         const accSummaries = otherAccs.map(a => `${a.accountNumber.split('-').pop()} ${a.balance} ${a.type === AccountType.LOAN ? 'Dr' : 'Cr'}`).join(' ');
 
-        const getReceipt = () => {
+        const getReceipt = (copyType: string) => {
             if (isRD) {
                 // RD/DD Format
-                // Calculate installment count (number of successful credits)
                 const installmentCount = acc.transactions.filter(t => t.type === 'credit').length;
                 const freqLabel = acc.rdFrequency === 'Daily' ? 'Days' : 'Months';
                 const countDisplay = `${acc.rdFrequency === 'Daily' ? 'DD' : 'RD'}/${installmentCount} ${freqLabel}`;
@@ -769,7 +768,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                         <div class="org-contact">9911770293, 9911773542</div>
                         <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
                         <div class="org-address">E-287/8, PUL PEHLADPUR, DELHI-110044</div>
-                        <div class="receipt-title">RECEIPT <span style="font-size: 8px; font-weight: normal; margin-left: 10px;">Office Copy</span></div>
+                        <div class="receipt-title">RECEIPT <span style="font-size: 8px; font-weight: normal; margin-left: 10px;">${copyType}</span></div>
                     </div>
 
                     <div class="info-grid">
@@ -822,6 +821,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 <div class="receipt-box loan-receipt">
                     <div class="header">
                         <div class="reg-no">Reg. No.: 10954</div>
+                        <div style="text-align: right; font-size: 8px;">${copyType}</div>
                         <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
                         <div class="org-contact">Ph: 9911770293 , 9911773542</div>
                     </div>
@@ -851,6 +851,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 <div class="watermark">ATULYA</div>
                 <div class="header">
                     <div class="reg-no">Reg. No.: 10954</div>
+                    <div style="text-align: right; font-size: 8px;">${copyType}</div>
                     <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
                     <div class="org-contact">Ph: 9911770293 , 9911773542</div>
                 </div>
@@ -880,13 +881,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
       <head>
         <title>Receipt ${tx.id}</title>
         <style>
-          /* Hide browser headers/footers */
-          @page { margin: 0; }
-          body { font-family: Arial, sans-serif; font-size: 11px; padding: 10px; margin: 0; }
-          .page-container { width: 100%; max-width: 400px; margin: 0 auto; }
-          .receipt-copy { margin-bottom: 20px; border-bottom: 1px dashed #333; padding-bottom: 20px; }
-          .receipt-copy:last-child { border-bottom: none; margin-bottom: 0; }
-          .receipt-box { border: 1px solid #000; padding: 15px; background: #fff; position: relative; }
+          @page { size: landscape; margin: 4mm; }
+          body { font-family: Arial, sans-serif; font-size: 11px; padding: 0; margin: 0; }
+          .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; align-items: flex-start; }
+          .receipt-copy { width: 49%; border-right: 1px dashed #ccc; padding-right: 2mm; }
+          .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
+          
+          .receipt-box { border: 1px solid #000; padding: 10px; background: #fff; position: relative; min-height: 100mm; }
           
           /* RD Receipt Styles */
           .rd-receipt { padding: 10px; font-family: 'Courier New', Courier, monospace; }
@@ -926,12 +927,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
       <body>
         <div class="page-container">
            <div class="receipt-copy">
-             <div style="text-align: center; font-size: 9px; font-weight: bold; margin-bottom: 2px;">OFFICE COPY</div>
-             ${getReceipt()}
+             ${getReceipt('OFFICE COPY')}
            </div>
            <div class="receipt-copy">
-             <div style="text-align: center; font-size: 9px; font-weight: bold; margin-bottom: 2px;">MEMBER COPY</div>
-             ${getReceipt()}
+             ${getReceipt('MEMBER COPY')}
            </div>
         </div>
       </body>
