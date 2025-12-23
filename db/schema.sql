@@ -47,6 +47,8 @@ CREATE TABLE IF NOT EXISTS accounts (
     emi NUMERIC(15,2),
     rd_frequency TEXT,
     low_balance_alert_threshold NUMERIC(15,2),
+    opening_date DATE,
+    maturity_processed BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );

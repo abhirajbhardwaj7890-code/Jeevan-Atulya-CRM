@@ -117,6 +117,10 @@ export const mapAccountFromDB = (a: any): Account => {
         guarantors: a.guarantors || [],
         lowBalanceAlertThreshold: a.low_balance_alert_threshold,
         createdAt: a.created_at,
+        emi: a.emi ? Number(a.emi) : undefined,
+        originalAmount: a.original_amount ? Number(a.original_amount) : undefined,
+        maturityProcessed: a.maturity_processed,
+        openingDate: a.opening_date,
         transactions: a.transactions ? a.transactions.map((t: any) => ({
             id: t.id,
             date: t.date,
@@ -178,7 +182,11 @@ const mapAccountToDB = (a: Account) => ({
     od_limit: a.odLimit ?? null,
     rd_frequency: a.rdFrequency ?? null,
     guarantors: a.guarantors || [],
-    low_balance_alert_threshold: a.lowBalanceAlertThreshold ?? null
+    low_balance_alert_threshold: a.lowBalanceAlertThreshold ?? null,
+    emi: a.emi ?? null,
+    original_amount: a.originalAmount ?? null,
+    maturity_processed: a.maturityProcessed ?? false,
+    opening_date: a.openingDate ?? null
 });
 
 export const mapInteractionFromDB = (i: any): Interaction => ({
