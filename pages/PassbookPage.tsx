@@ -223,15 +223,8 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                         // Logic: If ANY transaction in the row is unprinted, mark row as unprinted
                         if (tx.isTxUnprinted) row.isPrinted = false;
 
-                        // Append description if it's different (e.g. "Cash Dep, Trf")
-                        if (!row.desc.includes(tx.description)) {
-                            // Simple heuristic to keep description short
-                            if (row.desc.length < 15) {
-                                row.desc += `, ${tx.description}`;
-                            } else if (!row.desc.includes('...')) {
-                                row.desc += '...';
-                            }
-                        }
+                        // Add payment method to set
+                        if (tx.paymentMethod) row.methods.add(tx.paymentMethod);
 
                         placed = true;
                         break;
@@ -244,7 +237,6 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                         id: tx.id,
                         allIds: [tx.id],
                         date: formatDate(date),
-                        desc: tx.description,
                         cells: {
                             [tx.accCode]: {
                                 dr: tx.type === 'debit' ? tx.amount : 0,
@@ -252,8 +244,21 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                                 bal: tx.snapshotBalance
                             }
                         },
+                        methods: new Set([tx.paymentMethod || 'Cash']),
                         isPrinted: !tx.isTxUnprinted // If tx is unprinted, row is unprinted
                     });
+                }
+            });
+
+            // 4. Finalize row descriptions (Payment Mode)
+            visualRowsForDate.forEach(row => {
+                const m = row.methods;
+                if (m.has('Both') || (m.has('Cash') && m.has('Online'))) {
+                    row.desc = 'cash/online';
+                } else if (m.has('Online')) {
+                    row.desc = 'online';
+                } else {
+                    row.desc = 'cash';
                 }
             });
 
@@ -378,7 +383,7 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
             <thead>
                 <tr class="text-left bg-slate-50">
                     <th class="sep px-1">Trn.Date</th>
-                    <th class="sep px-1">Particulars</th>
+                    <th class="sep px-1">Particular</th>
                     <th colSpan="3" class="text-center">&lt;----- SM -----&gt;</th>
                     <th colSpan="3" class="text-center">&lt;----- CD -----&gt;</th>
                     <th colSpan="3" class="text-center">&lt;----- OD -----&gt;</th>
@@ -439,7 +444,7 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                 return `
                         <tr>
                             <td class="left txt">${r.date}</td>
-                            <td class="left txt" style="overflow: hidden;">${shortDesc(r.desc)}</td>
+                            <td class="left txt" style="overflow: hidden;">${r.desc}</td>
                             <td class="right num">${renderAmount(r.cells.SM?.dr)}</td><td class="right num">${renderAmount(r.cells.SM?.cr)}</td><td class="right num">${r.cells.SM ? r.cells.SM.bal.toFixed(0) : ''}</td>
                             <td class="right num">${renderAmount(r.cells.CD?.dr)}</td><td class="right num">${renderAmount(r.cells.CD?.cr)}</td><td class="right num">${r.cells.CD ? r.cells.CD.bal.toFixed(0) : ''}</td>
                             <td class="right num">${renderAmount(r.cells.OD?.dr)}</td><td class="right num">${renderAmount(r.cells.OD?.cr)}</td><td class="right num">${r.cells.OD ? r.cells.OD.bal.toFixed(0) : ''}</td>
@@ -646,7 +651,7 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                                     <thead>
                                         <tr className="text-left bg-slate-50">
                                             <th className="border-r border-dashed border-black px-1">Trn.Date</th>
-                                            <th className="border-r border-dashed border-black px-1">Particulars</th>
+                                            <th className="border-r border-dashed border-black px-1">Particular</th>
                                             <th colSpan={3} className="text-center">&lt;----- SM -----&gt;</th>
                                             <th colSpan={3} className="text-center">&lt;----- CD -----&gt;</th>
                                             <th colSpan={3} className="text-center">&lt;----- OD -----&gt;</th>
@@ -681,7 +686,7 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                                                     {isSelected && <div className="absolute left-0 top-0 bottom-0 w-1 bg-blue-600"></div>}
                                                     {r.date}
                                                 </td>
-                                                <td className="px-1 truncate text-[14px]" style={{ overflow: 'hidden' }}>{abbreviateParticulars(r.desc).substring(0, 15)}</td>
+                                                <td className="px-1 truncate text-[14px]" style={{ overflow: 'hidden' }}>{r.desc}</td>
                                                 <AmtCell val={r.cells.SM?.dr} /><AmtCell val={r.cells.SM?.cr} /><td className="text-right px-1 text-[16px]">{r.cells.SM ? r.cells.SM.bal.toFixed(0) : ''}</td>
                                                 <AmtCell val={r.cells.CD?.dr} /><AmtCell val={r.cells.CD?.cr} /><td className="text-right px-1 text-[16px]">{r.cells.CD ? r.cells.CD.bal.toFixed(0) : ''}</td>
                                                 <AmtCell val={r.cells.OD?.dr} /><AmtCell val={r.cells.OD?.cr} /><td className="text-right px-1 text-[16px]">{r.cells.OD ? r.cells.OD.bal.toFixed(0) : ''}</td>
