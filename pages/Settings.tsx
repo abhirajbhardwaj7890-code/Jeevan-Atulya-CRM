@@ -13,7 +13,7 @@ interface SettingsPageProps {
 }
 
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], accounts = [], onImportSuccess }) => {
-    const [activeTab, setActiveTab] = useState<'config' | 'import'>('config');
+    const [activeTab, setActiveTab] = useState<'config' | 'import' | 'maintenance'>('config');
     const [form, setForm] = useState(settings);
     const [isSaving, setIsSaving] = useState(false);
 
@@ -28,6 +28,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const [isImporting, setIsImporting] = useState(false);
     const [importLogs, setImportLogs] = useState<{ name: string, error: string }[]>([]);
     const [successCount, setSuccessCount] = useState(0);
+    const [isRepairing, setIsRepairing] = useState(false);
 
     // --- Configuration Logic ---
     const handleSave = async () => {
@@ -640,6 +641,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 >
                     <Database size={16} /> Data Management (Bulk Import)
                 </button>
+                <button
+                    onClick={() => setActiveTab('maintenance')}
+                    className={`pb-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'maintenance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
+                >
+                    <Trash2 size={16} /> Maintenance
+                </button>
             </div>
 
             {activeTab === 'config' && (
@@ -974,6 +981,73 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                     )}
                                 </tbody>
                             </table>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'maintenance' && (
+                <div className="animate-fade-in space-y-6">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                            <Database size={20} className="text-blue-600" />
+                            Data Integrity Utilities
+                        </h3>
+                        <div className="space-y-4">
+                            <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <h4 className="font-bold text-blue-900">Repair Missing Transactions</h4>
+                                    <p className="text-sm text-blue-700 max-w-md">
+                                        Identifies accounts that have a balance but are missing their initial "Opening Balance" transaction.
+                                        This utility will backfill these transactions using the account's opening date.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm("This will scan all accounts and create missing opening transactions. Continue?")) return;
+                                        setIsRepairing(true);
+                                        try {
+                                            const missingTxs: { transaction: Transaction, accountId: string }[] = [];
+                                            accounts.forEach(acc => {
+                                                // Check for accounts with balance but no transactions
+                                                if (acc.balance > 0 && (!acc.transactions || acc.transactions.length === 0)) {
+                                                    const tx: Transaction = {
+                                                        id: `TX-OPENING-${acc.id}`,
+                                                        date: acc.openingDate || acc.createdAt || new Date().toISOString().split('T')[0],
+                                                        amount: acc.balance,
+                                                        type: acc.type === AccountType.LOAN ? 'debit' : 'credit',
+                                                        category: acc.type === AccountType.LOAN ? 'Loan Disbursement' : 'Opening Balance',
+                                                        description: 'Repaired Opening Balance Transaction',
+                                                        paymentMethod: 'Cash'
+                                                    };
+                                                    missingTxs.push({ transaction: tx, accountId: acc.id });
+                                                }
+                                            });
+
+                                            if (missingTxs.length === 0) {
+                                                alert("No accounts found with missing transactions.");
+                                                return;
+                                            }
+
+                                            if (confirm(`Found ${missingTxs.length} accounts missing transactions. Repair now?`)) {
+                                                await bulkUpsertTransactions(missingTxs);
+                                                alert(`Successfully repaired ${missingTxs.length} transactions!`);
+                                                if (onImportSuccess) onImportSuccess(); // Refresh data
+                                            }
+                                        } catch (err: any) {
+                                            console.error(err);
+                                            alert("Repair failed: " + err.message);
+                                        } finally {
+                                            setIsRepairing(false);
+                                        }
+                                    }}
+                                    disabled={isRepairing}
+                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm"
+                                >
+                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                                    Run Repair
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
