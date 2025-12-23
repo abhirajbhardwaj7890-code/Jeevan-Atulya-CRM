@@ -26,7 +26,7 @@ export const Members: React.FC<MembersProps> = ({ members, agents = [], interact
     if (saved) return JSON.parse(saved);
     return {
       search: '',
-      searchMetric: 'All',
+      searchMetric: 'Member ID',
       showFilters: false,
       statusFilter: 'All',
       branchFilter: 'All',

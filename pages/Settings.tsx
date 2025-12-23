@@ -419,7 +419,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     const totalFees = 450 + 400 + 100 + 400 + 200; // Building + Welfare + Entry + SM + CD
                     ledgerToImport.push({
                         id: `LDG-REG-${memberId}`,
-                        date: new Date().toISOString().split('T')[0],
+                        date: memberJoinDate,
                         description: `Bulk Reg - ${row.full_name || 'Imported Member'}`,
                         amount: totalFees,
                         type: 'Income',
@@ -478,7 +478,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     if (acc.balance > 0 && acc.type !== AccountType.LOAN) {
                         ledgerToImport.push({
                             id: `LDG-OPEN-${acc.id}`,
-                            date: new Date().toISOString().split('T')[0],
+                            date: normalizeDate(row.opening_date),
                             description: `Bulk Open ${acc.type} - ${acc.accountNumber}`,
                             amount: acc.balance,
                             type: 'Income',

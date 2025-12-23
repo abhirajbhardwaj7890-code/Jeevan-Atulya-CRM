@@ -364,7 +364,7 @@ export const createAccount = (
     }
 
     return {
-        id: `ACC-${memberId}-${code}-${Date.now()}`,
+        id: `ACC-${memberId}-${code}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
         memberId,
         type,
         loanType,
@@ -382,7 +382,7 @@ export const createAccount = (
         termMonths: term > 0 ? term : undefined,
         guarantors: extra?.guarantors || [],
         transactions: [{
-            id: `TX-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+            id: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             date: extra?.date || new Date().toISOString().split('T')[0],
             amount: balance,
             type: type === AccountType.LOAN ? 'debit' : 'credit',
