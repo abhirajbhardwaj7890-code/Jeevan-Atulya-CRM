@@ -17,16 +17,52 @@ interface MembersProps {
 }
 
 export const Members: React.FC<MembersProps> = ({ members, agents = [], interactions = [], userRole, onSelectMember, onAddNew, groups = [], onUpdateGroup, onAddGroup }) => {
-  const [search, setSearch] = useState('');
-  const [searchMetric, setSearchMetric] = useState<'All' | 'Name' | 'Member ID' | 'Phone' | 'Father Name'>('All');
-  const [showFilters, setShowFilters] = useState(false);
+  // Persistence Key
+  const STORAGE_KEY = 'jeevan_atulya_members_filters';
+
+  // Load initial state from storage or default
+  const getInitialState = () => {
+    const saved = sessionStorage.getItem(STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+    return {
+      search: '',
+      searchMetric: 'All',
+      showFilters: false,
+      statusFilter: 'All',
+      branchFilter: 'All',
+      riskFilter: false,
+      dateStart: '',
+      dateEnd: ''
+    };
+  };
+
+  const initialState = getInitialState();
+
+  const [search, setSearch] = useState(initialState.search);
+  const [searchMetric, setSearchMetric] = useState<'All' | 'Name' | 'Member ID' | 'Phone' | 'Father Name'>(initialState.searchMetric);
+  const [showFilters, setShowFilters] = useState(initialState.showFilters);
 
   // Advanced Filters State
-  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Suspended' | 'Pending'>('All');
-  const [branchFilter, setBranchFilter] = useState<string>('All');
-  const [riskFilter, setRiskFilter] = useState(false); // Only high risk
-  const [dateStart, setDateStart] = useState('');
-  const [dateEnd, setDateEnd] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Suspended' | 'Pending'>(initialState.statusFilter);
+  const [branchFilter, setBranchFilter] = useState<string>(initialState.branchFilter);
+  const [riskFilter, setRiskFilter] = useState(initialState.riskFilter);
+  const [dateStart, setDateStart] = useState(initialState.dateStart);
+  const [dateEnd, setDateEnd] = useState(initialState.dateEnd);
+
+  // Persist state on change
+  React.useEffect(() => {
+    const state = {
+      search,
+      searchMetric,
+      showFilters,
+      statusFilter,
+      branchFilter,
+      riskFilter,
+      dateStart,
+      dateEnd
+    };
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }, [search, searchMetric, showFilters, statusFilter, branchFilter, riskFilter, dateStart, dateEnd]);
 
   // Bulk Selection State
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());

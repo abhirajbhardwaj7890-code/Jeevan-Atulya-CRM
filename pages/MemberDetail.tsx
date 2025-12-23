@@ -173,7 +173,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         entryCharge: 100,
         paymentMethod: 'Cash' as 'Cash' | 'Online' | 'Both',
         cashAmount: '',
-        onlineAmount: ''
+        onlineAmount: '',
+        activationDate: new Date().toISOString().split('T')[0]
     });
 
     // Loan Guarantor State
@@ -1253,6 +1254,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const submitActivation = async (e: React.FormEvent) => {
         e.preventDefault();
 
+        const activationDate = activateForm.activationDate || new Date().toISOString().split('T')[0];
         const totalFees = activateForm.buildingFund + activateForm.shareMoney + activateForm.compulsoryDeposit + activateForm.welfareFund + activateForm.entryCharge;
 
         // Validation for Split
@@ -1272,7 +1274,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             type: 'Receipt',
             category: 'Other',
             description: 'Membership Activation Receipt',
-            uploadDate: new Date().toISOString().split('T')[0],
+            uploadDate: activationDate,
             url: '#'
         };
 
@@ -1293,6 +1295,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             status: AccountStatus.ACTIVE,
             currency: 'INR',
             interestRate: 0,
+            openingDate: activationDate
         });
 
         onAddAccount(member.id, {
@@ -1302,12 +1305,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             status: AccountStatus.ACTIVE,
             currency: 'INR',
             interestRate: appSettings.interestRates.compulsoryDeposit,
+            openingDate: activationDate
         });
 
         // 4. Create Ledger Entry for Fees (using prop)
         onAddLedgerEntry({
             id: `LDG-ACTIVATE-${Date.now()}`,
-            date: new Date().toISOString().split('T')[0],
+            date: activationDate,
             description: `Activation Fees - ${member.fullName}`,
             amount: totalFees,
             type: 'Income',
@@ -1430,6 +1434,39 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
         } else if (isOD) {
             rows.push({ label: 'Est. Interest', value: calculateInterest(acc.balance, acc.interestRate || 0, acc.type, acc).value.toFixed(0), icon: PiggyBank });
+        } else if (acc.type === AccountType.COMPULSORY_DEPOSIT) {
+            // CD Due Logic
+            const startDateStr = acc.openingDate || acc.createdAt || member.joinDate;
+            const startDate = new Date(startDateStr);
+            const today = new Date();
+
+            // Calculate months passed
+            let months = (today.getFullYear() - startDate.getFullYear()) * 12 + (today.getMonth() - startDate.getMonth());
+            if (months < 0) months = 0;
+            // Include current month
+            months += 1;
+
+            const expected = months * 200;
+            const paid = acc.transactions.filter(t => t.type === 'credit').reduce((s, t) => s + t.amount, 0);
+
+            const due = expected - paid;
+
+            if (due > 0) {
+                rows.push({
+                    label: 'Total Due',
+                    value: `${formatCurrency(due)}`,
+                    icon: AlertCircle,
+                    highlight: false, // Custom style handled by icon color if needed, but 'highlight' usually makes text blue. 
+                    // We want RED for due. Let's handle it by hacking the value string or relying on standard color.
+                    // The component maps highlight to blue. Let's not use highlight=true, but just show it.
+                });
+                // Force add a custom "Due" class via a hack or just rely on the label? 
+                // The helper function returns plain objects.
+                // Let's modify the helper or the rendering to checking for 'Total Due'.
+                // Actually, let's just add it.
+            } else {
+                rows.push({ label: 'Status', value: 'Up to Date ✓', icon: CheckCircle });
+            }
         }
 
         return rows;
@@ -2416,6 +2453,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                         <input type="date" className="w-full border p-2 rounded" value={editMemberForm.dateOfBirth || ''} onChange={e => setEditMemberForm({ ...editMemberForm, dateOfBirth: e.target.value })} />
                                     </div>
                                     <div className="space-y-2">
+                                        <label className="block text-xs font-bold text-slate-500">Joined Date</label>
+                                        <input type="date" className="w-full border p-2 rounded" value={editMemberForm.joinDate || ''} onChange={e => setEditMemberForm({ ...editMemberForm, joinDate: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
                                         <label className="block text-xs font-bold text-slate-500">Current / Residence Address</label>
                                         <textarea className="w-full border p-2 rounded" placeholder="Current Address" value={editMemberForm.currentAddress || ''} onChange={e => setEditMemberForm({ ...editMemberForm, currentAddress: e.target.value })} />
                                     </div>
@@ -2499,6 +2540,16 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                 <div className="p-2 bg-slate-50 border rounded">Compulsory Dep: ₹200</div>
                                 <div className="p-2 bg-slate-50 border rounded">Welfare Fund: ₹400</div>
                                 <div className="p-2 bg-slate-50 border rounded">Entry Charge: ₹100</div>
+                            </div>
+
+                            <div className="pt-2">
+                                <label className="block text-xs font-bold text-slate-500 mb-1">Activation Date</label>
+                                <input
+                                    type="date"
+                                    className="w-full border p-2 rounded text-sm"
+                                    value={activateForm.activationDate}
+                                    onChange={e => setActivateForm({ ...activateForm, activationDate: e.target.value })}
+                                />
                             </div>
 
                             <div className="pt-4 border-t">
