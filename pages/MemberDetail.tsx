@@ -1221,9 +1221,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             interestRate: parseFloat(accountForm.interestRate),
             termMonths: accountForm.type === AccountType.FIXED_DEPOSIT
                 ? (parseFloat(accountForm.tenureYears) || 0) * 12
-                : accountForm.type !== AccountType.OPTIONAL_DEPOSIT
-                    ? (accountForm.rdFrequency === 'Daily' ? undefined : parseInt(accountForm.tenureMonths))
-                    : undefined,
+                : accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
+                    ? Math.round((parseInt(accountForm.tenureDays) || 0) / 30)
+                    : (parseInt(accountForm.tenureMonths) || 0),
             maturityDate: calcResult?.maturityDate,
             rdFrequency: accountForm.type === AccountType.RECURRING_DEPOSIT ? accountForm.rdFrequency as any : undefined,
             originalAmount: openingBalance,

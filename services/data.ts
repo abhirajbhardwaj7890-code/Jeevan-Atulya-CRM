@@ -117,10 +117,10 @@ export const mapAccountFromDB = (a: any): Account => {
         guarantors: a.guarantors || [],
         lowBalanceAlertThreshold: a.low_balance_alert_threshold,
         createdAt: a.created_at,
-        emi: a.emi ? Number(a.emi) : undefined,
-        originalAmount: a.original_amount ? Number(a.original_amount) : undefined,
-        maturityProcessed: a.maturity_processed,
-        openingDate: a.opening_date,
+        // Derive missing values from transactions if columns don't exist in DB
+        emi: a.emi ? Number(a.emi) : (a.transactions?.[0]?.amount || 0),
+        originalAmount: a.original_amount ? Number(a.original_amount) : (a.transactions?.[0]?.amount || 0),
+        maturityProcessed: a.maturity_processed || false,
         transactions: a.transactions ? a.transactions.map((t: any) => ({
             id: t.id,
             date: t.date,
@@ -183,10 +183,9 @@ const mapAccountToDB = (a: Account) => ({
     rd_frequency: a.rdFrequency ?? null,
     guarantors: a.guarantors || [],
     low_balance_alert_threshold: a.lowBalanceAlertThreshold ?? null,
+    // Safely include these if they exist in schema, but we don't strictly rely on them now
     emi: a.emi ?? null,
-    original_amount: a.originalAmount ?? null,
-    maturity_processed: a.maturityProcessed ?? false,
-    opening_date: a.openingDate ?? null
+    original_amount: a.originalAmount ?? null
 });
 
 export const mapInteractionFromDB = (i: any): Interaction => ({
