@@ -12,6 +12,7 @@ import { Network } from './pages/Network';
 import { SettingsPage } from './pages/Settings';
 import { Accounting } from './pages/Accounting';
 import { PassbookPage } from './pages/PassbookPage';
+import { Groups } from './pages/Groups';
 import {
     loadData,
     upsertMember,
@@ -26,9 +27,11 @@ import {
     MOCK_AGENTS,
     createAccount,
     DEFAULT_SETTINGS,
-    MOCK_NOTIFICATIONS
+    MOCK_NOTIFICATIONS,
+    upsertGroup,
+    deleteGroup
 } from './services/data';
-import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Agent, Notification } from './types';
+import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Agent, Notification, MemberGroup } from './types';
 import { Menu, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -51,6 +54,7 @@ const App: React.FC = () => {
     // Network State
     const [branches, setBranches] = useState<Branch[]>(MOCK_BRANCHES);
     const [agents, setAgents] = useState<Agent[]>(MOCK_AGENTS);
+    const [groups, setGroups] = useState<MemberGroup[]>([]);
 
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
     const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -285,6 +289,7 @@ const App: React.FC = () => {
                 setLedger(data.ledger);
                 setBranches(data.branches);
                 setAgents(data.agents);
+                setGroups(data.groups);
                 runScheduledTasks(data.accounts, data.members);
             } catch (e) {
                 console.error("Initialization failed", e);
@@ -308,6 +313,7 @@ const App: React.FC = () => {
             setLedger(data.ledger);
             setBranches(data.branches);
             setAgents(data.agents);
+            setGroups(data.groups);
             runScheduledTasks(data.accounts, data.members);
         } catch (e) {
             console.error("Refresh failed", e);
@@ -595,6 +601,21 @@ const App: React.FC = () => {
         await upsertAgent(agent);
     };
 
+    const handleAddGroup = async (group: MemberGroup) => {
+        setGroups(prev => [...prev, group]);
+        await upsertGroup(group);
+    };
+
+    const handleUpdateGroup = async (updatedGroup: MemberGroup) => {
+        setGroups(prev => prev.map(g => g.id === updatedGroup.id ? updatedGroup : g));
+        await upsertGroup(updatedGroup);
+    };
+
+    const handleDeleteGroup = async (groupId: string) => {
+        setGroups(prev => prev.filter(g => g.id !== groupId));
+        await deleteGroup(groupId);
+    };
+
     if (!isLoaded) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 animate-pulse flex-col gap-2"><RefreshCw className="animate-spin" size={32} /> Loading System Data...</div>;
 
     if (!isAuthenticated) return <LoginPage onLogin={handleLogin} />;
@@ -734,6 +755,16 @@ const App: React.FC = () => {
                         members={members}
                         accounts={accounts}
                         onImportSuccess={handleRefresh}
+                    />
+                )}
+
+                {currentPage === 'groups' && (
+                    <Groups
+                        groups={groups}
+                        members={members}
+                        onAddGroup={handleAddGroup}
+                        onUpdateGroup={handleUpdateGroup}
+                        onDeleteGroup={handleDeleteGroup}
                     />
                 )}
             </main>

@@ -1,4 +1,4 @@
-import { Member, Account, AccountType, AccountStatus, Interaction, LoanType, Branch, Agent, Notification, Guarantor, AppSettings, Transaction, LedgerEntry } from '../types';
+import { Member, Account, AccountType, AccountStatus, Interaction, LoanType, Branch, Agent, Notification, Guarantor, AppSettings, Transaction, LedgerEntry, MemberGroup } from '../types';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -398,7 +398,7 @@ export const createAccount = (
 // --- MOCK DATA GENERATOR ---
 const generateMockData = () => {
     // CLEAN SLATE FOR TESTING - No default members
-    return { members: [], accounts: [] };
+    return { members: [], accounts: [], groups: [] };
 };
 
 // --- API Operations ---
@@ -419,13 +419,14 @@ const getMemoryCache = () => {
             settings: { ...DEFAULT_SETTINGS },
             ledger: [],
             branches: [...MOCK_BRANCHES],
-            agents: [...MOCK_AGENTS]
+            agents: [...MOCK_AGENTS],
+            groups: mocks.groups || []
         };
     }
     return MEMORY_CACHE;
 };
 
-export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], agents: Agent[] }> => {
+export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], agents: Agent[], groups: MemberGroup[] }> => {
     // Check if Supabase is configured
     if (!isSupabaseConfigured()) {
         const cache = getMemoryCache();
@@ -436,7 +437,8 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             interactions: [...cache.interactions],
             ledger: [...cache.ledger],
             branches: [...cache.branches],
-            agents: [...cache.agents]
+            agents: [...cache.agents],
+            groups: [...cache.groups]
         };
     }
 
@@ -449,8 +451,14 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             supabase.from('society_ledger').select('*'),
             supabase.from('branches').select('*'),
             supabase.from('agents').select('*'),
+            supabase.from('agents').select('*'),
             supabase.from('settings').select('*')
         ]);
+
+        // Fetch Groups (Simulated via local cache if table missing or fetch fails, for resilience during dev)
+        // ideally we would do: supabase.from('groups').select('*')
+        // For now, we return empty or cached groups if not implemented in DB yet
+        const groups: MemberGroup[] = getMemoryCache().groups; // Fallback to local until SQL is run
 
         const members = (membersRes.data || []).map(mapMemberFromDB);
         const accounts = (accountsRes.data || []).map(mapAccountFromDB);
@@ -469,7 +477,7 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             else if (row.key === 'default_agent_fee') settings.defaultAgentFee = Number(val);
         });
 
-        return { members, accounts, interactions, settings, ledger, branches, agents };
+        return { members, accounts, interactions, settings, ledger, branches, agents, groups };
     } catch (error) {
         console.error("Critical: Failed to load data from Supabase", error);
         // Fail gracefully
@@ -481,7 +489,8 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             interactions: [...cache.interactions],
             ledger: [...cache.ledger],
             branches: [...cache.branches],
-            agents: [...cache.agents]
+            agents: [...cache.agents],
+            groups: [...cache.groups]
         };
     }
 };
@@ -655,4 +664,22 @@ export const saveSettings = async (settings: AppSettings) => {
 
     const { error } = await supabase.from('settings').upsert(updates, { onConflict: 'key' });
     if (error) throw error;
+};
+
+export const upsertGroup = async (group: MemberGroup) => {
+    // Local Only for now (Memory Cache)
+    const cache = getMemoryCache();
+    const idx = cache.groups.findIndex((g: MemberGroup) => g.id === group.id);
+    if (idx >= 0) cache.groups[idx] = group; else cache.groups.push(group);
+
+    // TODO: Add Supabase implementation using the 'groups' and 'group_members' tables
+    // const supabase = getSupabaseClient();
+    // if (isSupabaseConfigured()) { 
+    //    ... logic to sync with DB ...
+    // }
+};
+
+export const deleteGroup = async (groupId: string) => {
+    const cache = getMemoryCache();
+    cache.groups = cache.groups.filter((g: MemberGroup) => g.id !== groupId);
 };

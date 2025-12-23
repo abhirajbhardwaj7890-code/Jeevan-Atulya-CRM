@@ -194,3 +194,11 @@ export interface DashboardStats {
   activeLoans: number;
   loanPortfolioValue: number;
 }
+
+export interface MemberGroup {
+  id: string;
+  name: string;
+  description?: string;
+  memberIds: string[];
+  createdAt: string;
+}

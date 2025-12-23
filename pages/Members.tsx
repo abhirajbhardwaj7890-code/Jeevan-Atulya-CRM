@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { MemberCard } from '../components/MemberCard';
 import { Search, Filter, UserPlus, Download, Users, X, CheckSquare, Square } from 'lucide-react';
-import { Member, UserRole, Agent, Interaction } from '../types';
+import { Member, UserRole, Agent, Interaction, MemberGroup } from '../types';
 import { MOCK_BRANCHES } from '../services/data';
 
 interface MembersProps {
@@ -11,10 +11,14 @@ interface MembersProps {
   userRole: UserRole;
   onSelectMember: (member: Member) => void;
   onAddNew: () => void;
+  groups?: MemberGroup[];
+  onUpdateGroup?: (group: MemberGroup) => void;
+  onAddGroup?: (group: MemberGroup) => void;
 }
 
-export const Members: React.FC<MembersProps> = ({ members, agents = [], interactions = [], userRole, onSelectMember, onAddNew }) => {
+export const Members: React.FC<MembersProps> = ({ members, agents = [], interactions = [], userRole, onSelectMember, onAddNew, groups = [], onUpdateGroup, onAddGroup }) => {
   const [search, setSearch] = useState('');
+  const [searchMetric, setSearchMetric] = useState<'All' | 'Name' | 'Member ID' | 'Phone' | 'Father Name'>('All');
   const [showFilters, setShowFilters] = useState(false);
 
   // Advanced Filters State
@@ -41,27 +45,78 @@ export const Members: React.FC<MembersProps> = ({ members, agents = [], interact
     setSelectedIds(newSet);
   };
 
+
+
+  const [showGroupModal, setShowGroupModal] = useState(false);
+  const [selectedGroupOption, setSelectedGroupOption] = useState<string>('');
+  const [newGroupName, setNewGroupName] = useState('');
+
   const handleBulkAction = async (action: string) => {
     if (action === 'Export') {
       alert(`Exporting ${selectedIds.size} members...`);
       setSelectedIds(new Set());
     } else if (action === 'Add to Group') {
-      alert(`Adding ${selectedIds.size} members to group...`);
-      setSelectedIds(new Set());
+      setShowGroupModal(true);
     }
+  };
+
+  const handleConfirmAddToGroup = () => {
+    if (!onUpdateGroup || !onAddGroup) return;
+
+    if (selectedGroupOption === 'new') {
+      if (!newGroupName.trim()) {
+        alert("Please enter a group name");
+        return;
+      }
+      const newGroup: MemberGroup = {
+        id: `GRP-${Date.now()}`,
+        name: newGroupName,
+        description: 'Created from Member Directory',
+        memberIds: Array.from(selectedIds),
+        createdAt: new Date().toISOString()
+      };
+      onAddGroup(newGroup);
+    } else {
+      const group = groups.find(g => g.id === selectedGroupOption);
+      if (group) {
+        const updatedGroup = {
+          ...group,
+          memberIds: Array.from(new Set([...group.memberIds, ...Array.from(selectedIds)]))
+        };
+        onUpdateGroup(updatedGroup);
+      }
+    }
+
+    setShowGroupModal(false);
+    setSelectedIds(new Set());
+    setNewGroupName('');
+    setSelectedGroupOption('');
   };
 
   const filtered = members
     .filter(m => {
       // Text Search (Name, Email, Phone, Address, Member ID)
       const searchLower = search.toLowerCase();
-      const matchesSearch =
-        m.fullName.toLowerCase().includes(searchLower) ||
-        m.id.toLowerCase().includes(searchLower) ||
-        m.email.toLowerCase().includes(searchLower) ||
-        m.phone.includes(searchLower) ||
-        (m.currentAddress || '').toLowerCase().includes(searchLower) ||
-        (m.permanentAddress || '').toLowerCase().includes(searchLower);
+      let matchesSearch = false;
+
+      if (searchMetric === 'All') {
+        matchesSearch =
+          m.fullName.toLowerCase().includes(searchLower) ||
+          m.id.toLowerCase().includes(searchLower) ||
+          m.email.toLowerCase().includes(searchLower) ||
+          m.phone.includes(searchLower) ||
+          (m.fatherName || '').toLowerCase().includes(searchLower) ||
+          (m.currentAddress || '').toLowerCase().includes(searchLower) ||
+          (m.permanentAddress || '').toLowerCase().includes(searchLower);
+      } else if (searchMetric === 'Name') {
+        matchesSearch = m.fullName.toLowerCase().includes(searchLower);
+      } else if (searchMetric === 'Member ID') {
+        matchesSearch = m.id.toLowerCase().includes(searchLower);
+      } else if (searchMetric === 'Phone') {
+        matchesSearch = m.phone.includes(searchLower);
+      } else if (searchMetric === 'Father Name') {
+        matchesSearch = (m.fatherName || '').toLowerCase().includes(searchLower);
+      }
 
       // Status Filter
       const matchesStatus = statusFilter === 'All' || m.status === statusFilter;
@@ -121,6 +176,17 @@ export const Members: React.FC<MembersProps> = ({ members, agents = [], interact
           </div>
 
           <div className="flex gap-2 w-full md:w-auto">
+            <select
+              className="w-auto border border-slate-200 bg-white text-slate-900 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              value={searchMetric}
+              onChange={(e) => setSearchMetric(e.target.value as any)}
+            >
+              <option value="All">All Fields</option>
+              <option value="Name">Name</option>
+              <option value="Member ID">ID</option>
+              <option value="Phone">Phone</option>
+              <option value="Father Name">Father Name</option>
+            </select>
             <div className="relative flex-1 md:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
@@ -271,6 +337,70 @@ export const Members: React.FC<MembersProps> = ({ members, agents = [], interact
           </div>
         )}
       </div>
+      {/* Add To Group Modal */}
+      {
+        showGroupModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl shadow-xl w-full max-w-sm overflow-hidden animate-scale-in">
+              <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+                <h3 className="font-bold text-lg text-slate-900">Add to Group</h3>
+                <button
+                  onClick={() => setShowGroupModal(false)}
+                  className="text-slate-400 hover:text-slate-600"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-4 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Select Group</label>
+                  <select
+                    className="w-full border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={selectedGroupOption}
+                    onChange={e => setSelectedGroupOption(e.target.value)}
+                  >
+                    <option value="">-- Choose a Group --</option>
+                    {groups.map(g => (
+                      <option key={g.id} value={g.id}>{g.name}</option>
+                    ))}
+                    <option value="new">+ Create New Group</option>
+                  </select>
+                </div>
+
+                {selectedGroupOption === 'new' && (
+                  <div className="animate-fade-in">
+                    <label className="block text-sm font-medium text-slate-700 mb-2">New Group Name</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Committee Members"
+                      className="w-full border border-slate-200 rounded-lg p-2 focus:ring-2 focus:ring-blue-500 outline-none"
+                      value={newGroupName}
+                      onChange={e => setNewGroupName(e.target.value)}
+                      autoFocus
+                    />
+                  </div>
+                )}
+
+                <div className="pt-2 flex gap-2">
+                  <button
+                    onClick={() => setShowGroupModal(false)}
+                    className="flex-1 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleConfirmAddToGroup}
+                    disabled={!selectedGroupOption || (selectedGroupOption === 'new' && !newGroupName.trim())}
+                    className="flex-1 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium"
+                  >
+                    Add Members
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      }
     </div>
   );
 };

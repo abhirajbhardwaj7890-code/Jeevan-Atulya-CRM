@@ -17,6 +17,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, userRole, onNaviga
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Admin', 'Staff'] },
     { id: 'members', label: 'Members', icon: Users, roles: ['Admin', 'Staff'] },
+    { id: 'groups', label: 'Groups', icon: Users, roles: ['Admin', 'Staff'] },
     { id: 'network', label: 'Branches & Agents', icon: Network, roles: ['Admin', 'Staff'] },
     { id: 'accounts', label: 'All Accounts', icon: PieChart, roles: ['Admin'] }, // Restricted to Admin for global view
     { id: 'accounting', label: 'Accounting', icon: Calculator, roles: ['Admin', 'Staff'] },
@@ -44,8 +45,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, userRole, onNaviga
               key={item.id}
               onClick={() => onNavigate(item.id)}
               className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${isActive
-                  ? 'bg-blue-600 text-white'
-                  : 'hover:bg-slate-800 hover:text-white'
+                ? 'bg-blue-600 text-white'
+                : 'hover:bg-slate-800 hover:text-white'
                 }`}
             >
               <Icon size={20} />
