@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, LoanType, MemberDocument, UserRole, AppSettings, Guarantor, Nominee, LedgerEntry, Agent } from '../types';
 import { generateMemberSummary, analyzeFinancialHealth, draftInteractionNote, calculateMemberRisk } from '../services/gemini';
-import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search } from 'lucide-react';
+import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search, DollarSign } from 'lucide-react';
 
 interface MemberDetailProps {
     member: Member;
@@ -75,6 +75,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const [loadingAi, setLoadingAi] = useState(false);
     const [loadingRisk, setLoadingRisk] = useState(false);
     const [financialHealth, setFinancialHealth] = useState<any>(null);
+    const [interestChecked, setInterestChecked] = useState(false);
+    const [loanProjectEmi, setLoanProjectEmi] = useState<string>('');
+    const [loanProjectTenure, setLoanProjectTenure] = useState<string>('');
 
     // Interaction Form State
     const [newNote, setNewNote] = useState('');
@@ -442,6 +445,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         setViewSimAmount('');
         setViewSimType('deposit');
         setViewForecastMonths('12');
+        setLoanProjectEmi(acc.emi?.toString() || '');
+        setLoanProjectTenure(acc.termMonths?.toString() || '');
         setShowAccountViewModal(true);
     }
 
@@ -722,13 +727,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         <head>
           <title>Registration Receipt</title>
           <style>
-            @page { size: landscape; margin: 4mm; }
+            @page { size: portrait; margin: 4mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
-            table { width: 100%; border-collapse: collapse; }
-            td { width: 49%; vertical-align: top; padding: 0 4mm; }
-            td:first-child { border-right: 1px dashed #ccc; }
+            .receipt-container { display: flex; flex-direction: row; gap: 4mm; width: 100%; height: 100%; }
+            .receipt-copy-box { width: 50%; border-right: 1px dashed #ccc; padding-right: 2mm; overflow: hidden; }
+            .receipt-copy-box:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
             
-            .receipt-box { padding: 5px; display: flex; flex-direction: column; min-height: 120mm; position:relative; }
+            .receipt-box { padding: 5px; display: flex; flex-direction: column; min-height: 120mm; position:relative; border: 1px solid #000; }
             
             .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
             
@@ -754,12 +759,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
           </style>
         </head>
         <body>
-          <table>
-            <tr>
-              <td>${getReceiptHTML('MEMBER COPY')}</td>
-              <td>${getReceiptHTML('OFFICE COPY')}</td>
-            </tr>
-          </table>
+          <div class="receipt-container">
+            <div class="receipt-copy-box">${getReceiptHTML('MEMBER COPY')}</div>
+            <div class="receipt-copy-box">${getReceiptHTML('OFFICE COPY')}</div>
+          </div>
         </body>
         </html>
     `;
@@ -785,6 +788,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         const isRD = acc.type === AccountType.RECURRING_DEPOSIT;
         const isLoan = acc.type === AccountType.LOAN;
+
+        // Balance summaries for footer
+        const smAcc = accounts.find(a => a.type === AccountType.SHARE_CAPITAL);
+        const cdAcc = accounts.find(a => a.type === AccountType.COMPULSORY_DEPOSIT);
+        const smBal = smAcc ? smAcc.balance : 0;
+        const cdBal = cdAcc ? cdAcc.balance : 0;
 
         // Recipient Summary (Other accounts)
         const otherAccs = accounts.filter(a => a.id !== acc.id);
@@ -855,7 +864,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                         <div class="sig-title">Administrator</div>
                     </div>
 
-                    <div class="other-balances">${accSummaries}</div>
+                    <div class="other-balances" style="display:flex; justify-content:space-between; font-weight:bold;">
+                        <span style="font-size: 9px; color: #000;">SM Bal: ₹${smBal.toFixed(2)} | CD Bal: ₹${cdBal.toFixed(2)} | ${acc.type === AccountType.RECURRING_DEPOSIT && acc.rdFrequency === 'Daily' ? 'DD' : 'RD'} Bal: ₹${balanceAfter.toFixed(2)}</span>
+                    </div>
                     <div class="nice-day">Have a Nice Day</div>
                 </div>`;
             }
@@ -926,10 +937,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
       <head>
         <title>Receipt ${tx.id}</title>
         <style>
-          @page { size: landscape; margin: 4mm; }
+          @page { size: portrait; margin: 4mm; }
           body { font-family: Arial, sans-serif; font-size: 11px; padding: 0; margin: 0; }
-          .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; align-items: flex-start; }
-          .receipt-copy { width: 49%; border-right: 1px dashed #ccc; padding-right: 2mm; }
+          .page-container { display: flex; flex-direction: row; width: 100%; gap: 4mm; height: 100%; }
+          .receipt-copy { width: 50%; border-right: 1px dashed #ccc; padding-right: 2mm; overflow: hidden; }
           .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
           
           .receipt-box { border: 1px solid #000; padding: 10px; background: #fff; position: relative; min-height: 100mm; }
@@ -1114,6 +1125,76 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         setIsLockedAccount(false);
     };
 
+    // --- Automated Interest Posting ---
+    useEffect(() => {
+        if (!interestChecked && accounts.length > 0) {
+            const today = new Date();
+            const todayStr = today.toISOString().split('T')[0];
+
+            accounts.forEach(acc => {
+                const startDateStr = acc.lastInterestPostDate || acc.openingDate || acc.createdAt || member.joinDate;
+                let startDate = new Date(startDateStr);
+
+                // Keep posting until we catch up to today
+                while (true) {
+                    const nextMonth = new Date(startDate);
+                    nextMonth.setMonth(nextMonth.getMonth() + 1);
+
+                    if (nextMonth > today) break;
+
+                    let interest = 0;
+                    let description = '';
+                    const rate = acc.interestRate || 0;
+                    const isLoan = acc.type === AccountType.LOAN;
+
+                    if (isLoan) {
+                        if (acc.loanType === LoanType.EMERGENCY) {
+                            const principal = acc.initialAmount || acc.originalAmount || 0;
+                            interest = principal * (rate / 100) / 12;
+                            description = `Monthly Interest (Flat Rate ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
+                        } else {
+                            // Personal Loans: Reducing Balance (Interest on current balance)
+                            interest = acc.balance * (rate / 100) / 12;
+                            description = `Monthly Interest (Reducing ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
+                        }
+                    } else if (acc.type !== AccountType.SHARE_CAPITAL) {
+                        interest = acc.balance * (rate / 100) / 12;
+                        description = `Monthly Interest (Compounding ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
+                    }
+
+                    if (interest > 0) {
+                        const postDate = nextMonth.toISOString().split('T')[0];
+                        const newTx: Transaction = {
+                            id: `TX-INT-AUTO-${acc.id}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+                            amount: Math.round(interest),
+                            type: isLoan ? 'debit' : 'credit',
+                            category: 'Interest',
+                            description: description,
+                            date: postDate,
+                            paymentMethod: 'Cash'
+                        };
+
+                        onAddTransaction(acc.id, newTx);
+
+                        // Update current state for next loop iteration (compounding)
+                        if (!isLoan) acc.balance += Math.round(interest);
+
+                        onUpdateAccount({
+                            ...acc,
+                            lastInterestPostDate: postDate
+                        });
+
+                        startDate = nextMonth;
+                    } else {
+                        break;
+                    }
+                }
+            });
+
+            setInterestChecked(true);
+        }
+    }, [interestChecked, accounts, member.joinDate, onAddTransaction, onUpdateAccount]);
+
     // --- Account Wizard Logic ---
     const handleNextStep = () => { if (accountWizardStep === 1) { setAccountWizardStep(2); } else if (accountWizardStep === 2) { if (accountForm.type === AccountType.LOAN && (!guarantors.g1Name || !guarantors.g1Phone)) { alert("At least one guarantor is required for loans."); return; } setAccountWizardStep(3); } };
     const handlePrevStep = () => { if (accountWizardStep > 1) setAccountWizardStep(accountWizardStep - 1); };
@@ -1160,12 +1241,33 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             }
             setCalcResult({ maturityAmount: Math.round(totalPrincipal + interest), interestEarned: Math.round(interest), principal: totalPrincipal, totalPayable: Math.round(totalPrincipal + interest), maturityDate: maturityDateStr });
         } else if (accountForm.type === AccountType.LOAN) {
-            if (accountForm.loanType === LoanType.EMERGENCY) {
-                const years = termMonths / 12;
-                const totalInterest = P * (R / 100) * years;
-                const totalPay = P + totalInterest;
-                const emi = termMonths > 0 ? totalPay / termMonths : 0;
-                setCalcResult({ emi: Math.round(emi), totalInterest: Math.round(totalInterest), totalPayable: Math.round(totalPay), principal: P, maturityDate: maturityDateStr });
+            if (accountForm.loanType === LoanType.PERSONAL) {
+                // REDUCING BALANCE Logic for Personal Loans (Standard EMI)
+                const r = R / 12 / 100;
+                if (termMonths > 0) {
+                    const emi = (P * r * Math.pow(1 + r, termMonths)) / (Math.pow(1 + r, termMonths) - 1);
+                    const totalPay = emi * termMonths;
+                    setCalcResult({
+                        emi: Math.round(emi),
+                        totalInterest: Math.round(totalPay - P),
+                        totalPayable: Math.round(totalPay),
+                        principal: P,
+                        maturityDate: maturityDateStr
+                    });
+                } else {
+                    setCalcResult({ principal: P, maturityDate: maturityDateStr });
+                }
+            } else if (accountForm.loanType === LoanType.EMERGENCY) {
+                // Monthly Flat Rate: Interest is added monthly, not upfront
+                // EMI here only covers principal repayment
+                const emi = termMonths > 0 ? P / termMonths : 0;
+                setCalcResult({
+                    emi: Math.round(emi),
+                    totalInterest: 0, // Interest posted monthly later
+                    totalPayable: P,
+                    principal: P,
+                    maturityDate: maturityDateStr
+                });
             } else {
                 const r = R / 12 / 100;
                 if (termMonths > 0) {
@@ -1245,10 +1347,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             if (guarantors.g2Name) finalGuarantors.push({ name: guarantors.g2Name, phone: guarantors.g2Phone, relation: guarantors.g2Rel });
         }
 
+        const totalAmountForAccount = openingBalance;
+
         const newAccountData: Partial<Account> = {
             type: accountForm.type,
             loanType: accountForm.type === AccountType.LOAN ? accountForm.loanType : undefined,
-            balance: openingBalance,
+            balance: totalAmountForAccount,
             status: AccountStatus.ACTIVE,
             currency: 'INR',
             interestRate: parseFloat(accountForm.interestRate),
@@ -1259,7 +1363,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     : (parseInt(accountForm.tenureMonths) || 0),
             maturityDate: calcResult?.maturityDate,
             rdFrequency: accountForm.type === AccountType.RECURRING_DEPOSIT ? accountForm.rdFrequency as any : undefined,
-            originalAmount: openingBalance,
+            originalAmount: totalAmountForAccount, // Total debt for personal loan
+            initialAmount: openingBalance, // Original principal
+            emi: calcResult?.emi,
             guarantors: finalGuarantors,
             openingDate: accountForm.openingDate // Pass opening date
         };
@@ -1376,26 +1482,29 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const isFD = acc.type === AccountType.FIXED_DEPOSIT;
         const isRD = acc.type === AccountType.RECURRING_DEPOSIT;
         const isOD = acc.type === AccountType.OPTIONAL_DEPOSIT;
+        const isCD = acc.type === AccountType.COMPULSORY_DEPOSIT;
 
-        // Row 1: Key Financial Metric
+        // Row 1 & 2: Key Financial Metrics
         if (isLoan) {
             rows.push({ label: 'Original Loan', value: formatCurrency(acc.originalAmount || 0), icon: Target });
+            rows.push({ label: 'Loan Type', value: acc.loanType || 'Personal', icon: Shield });
+            rows.push({ label: 'EMI Amount', value: formatCurrency(acc.emi || 0), icon: Calendar });
+            const tenure = acc.termMonths || 0;
+            rows.push({ label: 'Tenure', value: `${tenure} Months`, icon: Clock });
         } else if (isFD) {
             rows.push({ label: 'Principal', value: formatCurrency(acc.initialAmount || acc.balance), icon: Target });
+            rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
+            rows.push({ label: 'Maturity Date', value: formatDate(acc.maturityDate), icon: Clock });
+            const tenure = acc.termMonths || 0;
+            rows.push({ label: 'Tenure', value: tenure >= 12 ? `${tenure / 12} Years` : `${tenure} Months`, icon: History });
         } else if (isRD) {
             rows.push({ label: 'Installment', value: formatCurrency(acc.emi || 0) + (acc.rdFrequency === 'Daily' ? '/day' : '/mo'), icon: Target });
-        } else if (isOD) {
             rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
-        } else {
-            rows.push({ label: 'Balance', value: formatCurrency(acc.balance), icon: Wallet });
-        }
-
-        // Row 2: Secondary Metric
-        if (isLoan) {
-            rows.push({ label: 'EMI Amount', value: formatCurrency(acc.emi || 0), icon: Calendar });
-        } else if (isFD || isRD) {
             rows.push({ label: 'Maturity Date', value: formatDate(acc.maturityDate), icon: Clock });
-        } else if (isOD) {
+            const tenureText = acc.rdFrequency === 'Daily' ? `${Math.round((acc.termMonths || 0) * 30.41)} Days` : `${acc.termMonths} Months`;
+            rows.push({ label: 'Tenure', value: tenureText, icon: History });
+        } else if (isOD || isCD) {
+            rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
             const minBal = getMinBalanceForYear(acc);
             rows.push({ label: 'Min Balance (YTD)', value: formatCurrency(minBal), icon: Shield });
         }
@@ -1404,7 +1513,6 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         if (isFD) {
             const P = acc.initialAmount || acc.balance;
             const R = acc.interestRate || 0;
-            const n_years = (acc.termMonths || 12) / 12;
             let matVal = 0;
             if (acc.maturityDate) {
                 const t = (acc.termMonths || 12) / 12;
@@ -1468,7 +1576,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         } else if (isLoan) {
             rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
         } else if (isOD) {
-            rows.push({ label: 'Est. Interest', value: calculateInterest(acc.balance, acc.interestRate || 0, acc.type, acc).value.toFixed(0), icon: PiggyBank });
+            rows.push({ label: 'Est. Interest (Y)', value: formatCurrency(Math.round(acc.balance * (acc.interestRate || 0) / 100)), icon: PiggyBank });
         } else if (acc.type === AccountType.COMPULSORY_DEPOSIT) {
             // CD Due Logic
             const startDateStr = acc.openingDate || acc.createdAt || member.joinDate;
@@ -1619,17 +1727,19 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                     acc.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' :
                                                         'bg-slate-100 text-slate-600'
                                                     }`}>{acc.status}</span>
-                                                <button
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setTransForm(prev => ({ ...prev, accountId: acc.id }));
-                                                        setIsLockedAccount(true);
-                                                        setShowTransModal(true);
-                                                    }}
-                                                    className="mt-3 text-[10px] font-bold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-1 transition-colors group/btn"
-                                                >
-                                                    <Plus size={12} className="group-hover/btn:rotate-90 transition-transform" /> Transaction
-                                                </button>
+                                                <div className="flex gap-2 mt-3">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            setTransForm(prev => ({ ...prev, accountId: acc.id }));
+                                                            setIsLockedAccount(true);
+                                                            setShowTransModal(true);
+                                                        }}
+                                                        className="text-[10px] font-bold bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 flex items-center gap-1 transition-colors group/btn"
+                                                    >
+                                                        <Plus size={12} className="group-hover/btn:rotate-90 transition-transform" /> Transaction
+                                                    </button>
+                                                </div>
                                             </div>
                                         </div>
 
@@ -2044,7 +2154,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                     value={accountForm.loanType}
                                                     onChange={e => setAccountForm({ ...accountForm, loanType: e.target.value as LoanType })}
                                                 >
-                                                    {Object.values(LoanType).map(t => <option key={t} value={t}>{t}</option>)}
+                                                    {[LoanType.PERSONAL, LoanType.EMERGENCY].map(t => <option key={t} value={t}>{t}</option>)}
                                                 </select>
                                             </div>
                                         )}
@@ -2763,96 +2873,295 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             )}
 
             {/* View Account Modal (Calculators) */}
-            {showAccountViewModal && viewingAccount && (
-                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto relative p-6 shadow-2xl">
-                        <button onClick={() => setShowAccountViewModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"><X size={24} /></button>
+            {showAccountViewModal && viewingAccount && (() => {
+                const isLoan = viewingAccount.type === AccountType.LOAN;
+                const isPersonal = viewingAccount.loanType === LoanType.PERSONAL;
+                const isFD = viewingAccount.type === AccountType.FIXED_DEPOSIT;
+                const isRD = viewingAccount.type === AccountType.RECURRING_DEPOSIT;
 
-                        <div className="flex items-center gap-4 mb-8">
-                            <div className={`p-3 rounded-xl ${viewingAccount.type === AccountType.LOAN ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
-                                <CreditCard size={32} />
-                            </div>
-                            <div>
-                                <h3 className="text-2xl font-bold text-slate-900">{viewingAccount.type}</h3>
-                                <p className="text-slate-500 font-mono">{viewingAccount.accountNumber}</p>
-                            </div>
-                            <div className="ml-auto text-right">
-                                <p className="text-xs font-bold text-slate-400 uppercase">Current Balance</p>
-                                <p className="text-3xl font-black text-slate-900">{formatCurrency(viewingAccount.balance)}</p>
-                            </div>
-                        </div>
+                const initialPrincipal = viewingAccount.initialAmount || viewingAccount.originalAmount || 0;
+                const totalInterestAdded = viewingAccount.transactions
+                    .filter(t => t.category === 'Interest')
+                    .reduce((sum, t) => sum + t.amount, 0);
+                const totalRepayments = viewingAccount.transactions
+                    .filter(t => t.type === 'credit' && isLoan)
+                    .reduce((sum, t) => sum + t.amount, 0);
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                            {/* Projections & Calculators */}
-                            <div className="space-y-6">
-                                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <TrendingUp size={18} className="text-blue-600" />
-                                        <h4 className="font-bold text-slate-900">Forecast Calculator</h4>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">Forecast Period (Months)</label>
-                                            <input type="range" min="1" max="60" className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer" value={viewForecastMonths} onChange={e => setViewForecastMonths(e.target.value)} />
-                                            <div className="flex justify-between text-[10px] text-slate-400 mt-1"><span>1m</span><span>{viewForecastMonths} months</span><span>60m</span></div>
-                                        </div>
-                                        <div className="bg-white p-3 rounded-lg border border-slate-100 flex justify-between items-center">
-                                            <span className="text-sm font-medium text-slate-600">Projected Interest</span>
-                                            <span className="text-lg font-bold text-green-600">+{formatCurrency((viewingAccount.balance * (viewingAccount.interestRate || 0) / 100) * (parseInt(viewForecastMonths) / 12))}</span>
-                                        </div>
-                                    </div>
+                const principalPaid = Math.max(0, initialPrincipal - (viewingAccount.balance - totalInterestAdded)); // Approx
+                const progressPercent = isLoan
+                    ? Math.min(100, (totalRepayments / (initialPrincipal + totalInterestAdded)) * 100)
+                    : isFD || isRD
+                        ? Math.min(100, (viewingAccount.balance / (viewingAccount.originalAmount || 1)) * 100)
+                        : 0;
+
+                return (
+                    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+                        <div className="bg-white rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden relative flex flex-col shadow-2xl">
+                            {/* Header */}
+                            <div className="p-6 border-b border-slate-100 flex items-center gap-4 relative">
+                                <div className={`p-3 rounded-xl ${isLoan ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>
+                                    <CreditCard size={32} />
                                 </div>
+                                <div>
+                                    <h3 className="text-2xl font-bold text-slate-900">{viewingAccount.type}</h3>
+                                    <p className="text-slate-500 font-mono flex items-center gap-2">
+                                        {viewingAccount.accountNumber}
+                                        {viewingAccount.loanType && <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-sans uppercase">{viewingAccount.loanType}</span>}
+                                    </p>
+                                </div>
+                                <div className="ml-auto text-right">
+                                    <p className="text-xs font-bold text-slate-400 uppercase">Current Balance</p>
+                                    <p className={`text-3xl font-black ${isLoan ? 'text-red-600' : 'text-slate-900'}`}>{formatCurrency(viewingAccount.balance)}</p>
+                                </div>
+                                <button onClick={() => setShowAccountViewModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-2"><X size={24} /></button>
+                            </div>
 
-                                <div className="bg-blue-50 p-6 rounded-xl border border-blue-100">
-                                    <div className="flex items-center gap-2 mb-4">
-                                        <Calculator size={18} className="text-blue-700" />
-                                        <h4 className="font-bold text-blue-900">Simulation</h4>
-                                    </div>
-                                    <div className="space-y-4">
-                                        <div className="flex gap-2">
-                                            <button type="button" onClick={() => setViewSimType('deposit')} className={`flex-1 py-1.5 text-xs font-bold rounded ${viewSimType === 'deposit' ? 'bg-blue-700 text-white' : 'bg-white text-blue-700 border border-blue-200'}`}>Deposit</button>
-                                            <button type="button" onClick={() => setViewSimType('withdraw')} className={`flex-1 py-1.5 text-xs font-bold rounded ${viewSimType === 'withdraw' ? 'bg-amber-600 text-white' : 'bg-white text-amber-600 border border-amber-200'}`}>Withdraw</button>
+                            <div className="flex-1 overflow-y-auto p-6">
+                                <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                                    {/* Left Column: Stats & Progress */}
+                                    <div className="lg:col-span-2 space-y-8">
+                                        {/* Progress Card */}
+                                        <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200">
+                                            <div className="flex justify-between items-end mb-4">
+                                                <div>
+                                                    <h4 className="text-sm font-bold text-slate-500 uppercase">Account Progress</h4>
+                                                    <p className="text-xl font-bold text-slate-900">
+                                                        {isLoan ? 'Loan Repayment Status' : 'Savings Accumulation'}
+                                                    </p>
+                                                </div>
+                                                <span className="text-2xl font-black text-blue-600">{Math.round(progressPercent)}%</span>
+                                            </div>
+                                            <div className="w-full bg-slate-200 rounded-full h-3 mb-6">
+                                                <div className="bg-blue-600 h-3 rounded-full transition-all duration-1000" style={{ width: `${progressPercent}%` }}></div>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-4">
+                                                <div className="bg-white p-3 rounded-xl border border-slate-100">
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{isLoan ? 'Principal' : 'Target'}</p>
+                                                    <p className="text-sm font-bold text-slate-800">{formatCurrency(initialPrincipal || viewingAccount.originalAmount || 0)}</p>
+                                                </div>
+                                                <div className="bg-white p-3 rounded-xl border border-slate-100">
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{isLoan ? 'Interest Paid' : 'Interest Earned'}</p>
+                                                    <p className="text-sm font-bold text-green-600">{isLoan ? '-' : '+'}{formatCurrency(totalInterestAdded)}</p>
+                                                </div>
+                                                <div className="bg-white p-3 rounded-xl border border-slate-100">
+                                                    <p className="text-[10px] font-bold text-slate-400 uppercase">{isLoan ? 'Repaid' : 'Current'}</p>
+                                                    <p className="text-sm font-bold text-blue-600">{formatCurrency(isLoan ? totalRepayments : viewingAccount.balance)}</p>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-2.5 text-slate-400">₹</span>
-                                            <input type="number" placeholder="Enter amount..." className="w-full border p-2 pl-7 rounded-lg" value={viewSimAmount} onChange={e => setViewSimAmount(e.target.value)} />
+
+                                        {/* Detailed Info Grid */}
+                                        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                <div className="flex items-center gap-2 mb-2 text-slate-400"><Calendar size={14} /> <span className="text-[10px] font-bold uppercase">Opening Date</span></div>
+                                                <p className="text-sm font-bold text-slate-800">{formatDate(viewingAccount.openingDate || viewingAccount.createdAt)}</p>
+                                            </div>
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                <div className="flex items-center gap-2 mb-2 text-slate-400"><TrendingUp size={14} /> <span className="text-[10px] font-bold uppercase">Interest Rate</span></div>
+                                                <p className="text-sm font-bold text-slate-800">{viewingAccount.interestRate}% <span className="text-[10px] font-normal text-slate-500">p.a.</span></p>
+                                            </div>
+                                            <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                <div className="flex items-center gap-2 mb-2 text-slate-400"><Clock size={14} /> <span className="text-[10px] font-bold uppercase">Tenure</span></div>
+                                                <p className="text-sm font-bold text-slate-800">{viewingAccount.termMonths || 0} Months</p>
+                                            </div>
+                                            {isLoan && (
+                                                <>
+                                                    <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                        <div className="flex items-center gap-2 mb-2 text-slate-400"><DollarSign size={14} /> <span className="text-[10px] font-bold uppercase">Monthly EMI</span></div>
+                                                        <p className="text-sm font-bold text-blue-600">{formatCurrency(viewingAccount.emi || 0)}</p>
+                                                    </div>
+                                                    <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                        <div className="flex items-center gap-2 mb-2 text-slate-400"><Users size={14} /> <span className="text-[10px] font-bold uppercase">Guarantors</span></div>
+                                                        <p className="text-sm font-bold text-slate-800">{viewingAccount.guarantors?.length || 0} Members</p>
+                                                    </div>
+                                                </>
+                                            )}
+                                            {(isFD || isRD) && (
+                                                <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
+                                                    <div className="flex items-center gap-2 mb-2 text-slate-400"><CheckCircle size={14} /> <span className="text-[10px] font-bold uppercase">Maturity Date</span></div>
+                                                    <p className="text-sm font-bold text-green-600">{formatDate(viewingAccount.maturityDate)}</p>
+                                                </div>
+                                            )}
                                         </div>
-                                        {viewSimAmount && (
-                                            <div className="bg-white p-3 rounded-lg border border-blue-50 flex justify-between items-center animate-pulse">
-                                                <span className="text-sm text-slate-600">New Balance</span>
-                                                <span className="text-lg font-bold text-slate-900">
-                                                    {formatCurrency(viewingAccount.balance + (viewSimType === 'deposit' ? parseFloat(viewSimAmount) || 0 : -(parseFloat(viewSimAmount) || 0)))}
-                                                </span>
+
+                                        {/* Projections / Actions */}
+                                        <div className="bg-blue-600 rounded-2xl p-6 text-white shadow-lg overflow-hidden relative">
+                                            <div className="absolute -right-10 -bottom-10 text-white/10 rotate-12"><Calculator size={160} /></div>
+                                            <div className="relative z-10">
+                                                <h4 className="text-lg font-bold mb-4 flex items-center gap-2">
+                                                    {isLoan ? 'Standard Loan Overview' : 'Savings Growth Forecast'}
+                                                </h4>
+
+                                                {isLoan ? (
+                                                    <div className="space-y-4">
+                                                        <p className="text-sm text-blue-100">Projected repayment based on original EMI:</p>
+                                                        <div className="grid grid-cols-2 gap-4">
+                                                            <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
+                                                                <p className="text-[10px] font-bold text-blue-200 uppercase">Estimated Remaining Months</p>
+                                                                <p className="text-2xl font-black">
+                                                                    {(() => {
+                                                                        const P = viewingAccount.balance;
+                                                                        const r = (viewingAccount.interestRate || 0) / 12 / 100;
+                                                                        const E = viewingAccount.emi || 0;
+                                                                        if (E <= P * r) return '∞';
+                                                                        const n = Math.log(E / (E - P * r)) / Math.log(1 + r);
+                                                                        return isNaN(n) ? '0' : Math.ceil(n);
+                                                                    })()}
+                                                                </p>
+                                                            </div>
+                                                            <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20">
+                                                                <p className="text-[10px] font-bold text-blue-200 uppercase">Current Fixed EMI</p>
+                                                                <p className="text-2xl font-black">{formatCurrency(viewingAccount.emi || 0)}</p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ) : (
+                                                    <div className="space-y-4">
+                                                        <div className="flex items-center gap-4">
+                                                            <input type="range" min="1" max="60" className="flex-1 h-2 bg-blue-400/50 rounded-lg appearance-none cursor-pointer accent-white" value={viewForecastMonths} onChange={e => setViewForecastMonths(e.target.value)} />
+                                                            <span className="font-bold min-w-[3rem] text-right">{viewForecastMonths}m</span>
+                                                        </div>
+                                                        <div className="bg-white/10 backdrop-blur-md p-4 rounded-xl border border-white/20 flex justify-between items-center">
+                                                            <div>
+                                                                <p className="text-[10px] font-bold text-blue-200 uppercase">Yield in {viewForecastMonths} months</p>
+                                                                <p className="text-2xl font-black">+{formatCurrency((viewingAccount.balance * (viewingAccount.interestRate || 0) / 100) * (parseInt(viewForecastMonths) / 12))}</p>
+                                                            </div>
+                                                            <TrendingUp size={32} className="text-blue-200" />
+                                                        </div>
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Loan Recalculation Tool */}
+                                        {isLoan && isPersonal && (
+                                            <div className="bg-amber-50 p-6 rounded-2xl border border-amber-200 shadow-sm">
+                                                <div className="flex items-center justify-between mb-4">
+                                                    <div className="flex items-center gap-2">
+                                                        <div className="p-2 bg-amber-200 text-amber-800 rounded-lg"><RotateCcw size={18} /></div>
+                                                        <div>
+                                                            <h4 className="font-bold text-amber-900">EMI & Tenure Recalculator</h4>
+                                                            <p className="text-[10px] text-amber-700 font-medium">Use this to plan after extra payments</p>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2">
+                                                        <button
+                                                            onClick={() => {
+                                                                const updatedAcc = {
+                                                                    ...viewingAccount,
+                                                                    emi: parseFloat(loanProjectEmi) || viewingAccount.emi,
+                                                                    termMonths: parseInt(loanProjectTenure) || viewingAccount.termMonths
+                                                                };
+                                                                onUpdateAccount(updatedAcc);
+                                                                setViewingAccount(updatedAcc);
+                                                                alert("Primary EMI updated successfully!");
+                                                            }}
+                                                            className="px-3 py-1.5 bg-amber-600 text-white text-[10px] font-bold rounded-lg hover:bg-amber-700 transition-colors shadow-sm"
+                                                        >
+                                                            Apply to Account
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div className="space-y-1">
+                                                        <label className="block text-[10px] font-black text-amber-700 uppercase">Target EMI (Revised)</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-2.5 text-amber-400 text-sm">₹</span>
+                                                            <input
+                                                                type="number"
+                                                                className="w-full border-amber-200 border-2 p-2 pl-7 rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+                                                                placeholder="Enter EMI..."
+                                                                value={loanProjectEmi}
+                                                                onChange={e => {
+                                                                    setLoanProjectEmi(e.target.value);
+                                                                    const emi = parseFloat(e.target.value);
+                                                                    if (emi > 0) {
+                                                                        const r = (viewingAccount.interestRate || 0) / 12 / 100;
+                                                                        const P = viewingAccount.balance;
+                                                                        if (emi > P * r) {
+                                                                            const n = Math.log(emi / (emi - P * r)) / Math.log(1 + r);
+                                                                            setLoanProjectTenure(Math.ceil(n).toString());
+                                                                        } else {
+                                                                            setLoanProjectTenure('∞');
+                                                                        }
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <label className="block text-[10px] font-black text-amber-700 uppercase">Target Tenure (Months)</label>
+                                                        <div className="relative">
+                                                            <span className="absolute left-3 top-2.5 text-amber-400 text-sm"><Clock size={14} /></span>
+                                                            <input
+                                                                type="number"
+                                                                className="w-full border-amber-200 border-2 p-2 pl-8 rounded-xl text-sm font-bold bg-white focus:ring-2 focus:ring-amber-500 focus:border-transparent outline-none"
+                                                                placeholder="Months..."
+                                                                value={loanProjectTenure}
+                                                                onChange={e => {
+                                                                    setLoanProjectTenure(e.target.value);
+                                                                    const n = parseInt(e.target.value);
+                                                                    if (n > 0) {
+                                                                        const r = (viewingAccount.interestRate || 0) / 12 / 100;
+                                                                        const P = viewingAccount.balance;
+                                                                        const emi = (P * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1);
+                                                                        setLoanProjectEmi(Math.round(emi).toString());
+                                                                    }
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="mt-4 p-3 bg-white/50 rounded-xl flex items-start gap-2 border border-amber-100">
+                                                    <AlertCircle size={14} className="text-amber-600 mt-0.5" />
+                                                    <p className="text-[9px] text-amber-800 leading-tight">
+                                                        Changing the <strong>Target EMI</strong> will calculate the new <strong>Tenure</strong>.
+                                                        Changing the <strong>Tenure</strong> will calculate the needed <strong>EMI</strong> to close the loan.
+                                                    </p>
+                                                </div>
                                             </div>
                                         )}
                                     </div>
-                                </div>
-                            </div>
 
-                            {/* Account History Snippet */}
-                            <div>
-                                <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
-                                    <History size={18} className="text-slate-400" />
-                                    Recent History
-                                </h4>
-                                <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
-                                    {viewingAccount.transactions.length > 0 ? viewingAccount.transactions.slice(0, 10).map(t => (
-                                        <div key={t.id} className="p-3 border rounded-lg bg-white hover:bg-slate-50 transition-colors">
-                                            <div className="flex justify-between items-start mb-1">
-                                                <span className="text-xs font-bold text-slate-500 uppercase">{formatDate(t.date)}</span>
-                                                <span className={`text-sm font-bold ${t.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
-                                                    {t.type === 'credit' ? '+' : '-'}{formatCurrency(t.amount)}
-                                                </span>
+                                    {/* Right Column: Mini History & Quick Settings */}
+                                    <div className="space-y-8">
+                                        <div>
+                                            <h4 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                                                <History size={18} className="text-slate-400" />
+                                                Recent History
+                                            </h4>
+                                            <div className="space-y-3 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar">
+                                                {viewingAccount.transactions.length > 0 ? viewingAccount.transactions.slice(0, 20).map(t => (
+                                                    <div key={t.id} className="p-3 border border-slate-100 rounded-xl bg-slate-50 hover:bg-white hover:shadow-sm transition-all">
+                                                        <div className="flex justify-between items-start mb-1">
+                                                            <span className="text-[10px] font-bold text-slate-400 uppercase">{formatDate(t.date)}</span>
+                                                            <span className={`text-sm font-bold ${t.type === 'credit' ? 'text-green-600' : 'text-red-600'}`}>
+                                                                {t.type === 'credit' ? '+' : '-'}{formatCurrency(t.amount)}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-600 truncate font-medium">{t.description}</p>
+                                                        <div className="mt-2 flex justify-between items-center">
+                                                            <span className="text-[9px] bg-slate-200 text-slate-500 px-2 py-0.5 rounded-full font-bold uppercase">{t.category || 'General'}</span>
+                                                            <span className="text-[9px] text-slate-400">{t.paymentMethod}</span>
+                                                        </div>
+                                                    </div>
+                                                )) : (
+                                                    <div className="text-center py-20 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200">
+                                                        <History size={32} className="text-slate-200 mx-auto mb-2" />
+                                                        <p className="text-slate-400 text-sm italic">No history found</p>
+                                                    </div>
+                                                )}
                                             </div>
-                                            <p className="text-xs text-slate-600 truncate">{t.description}</p>
                                         </div>
-                                    )) : <div className="text-center py-10 text-slate-400 text-sm italic">No transaction history</div>}
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </div>
-            )}
+                );
+            })()}
         </div>
     );
 };
+
+export default MemberDetail;

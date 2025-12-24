@@ -129,6 +129,7 @@ export interface Account {
   lowBalanceAlertThreshold?: number; // New field for alerts
   createdAt?: string; // Metadata from database
   openingDate?: string; // Account opening date
+  lastInterestPostDate?: string; // Track last automated interest posting
 }
 
 export interface Interaction {
