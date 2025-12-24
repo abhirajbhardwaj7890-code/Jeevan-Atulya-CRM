@@ -92,6 +92,17 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
     const handleSubmit = async () => {
         if (isSaving) return; // Prevent double clicks
 
+        // Validate Phone Number (10 digits)
+        const phoneRegex = /^\d{10}$/;
+        if (!phoneRegex.test(formData.phone)) {
+            alert("Mobile Number must be exactly 10 digits.");
+            return;
+        }
+        if (formData.nomineePhone && !phoneRegex.test(formData.nomineePhone)) {
+            alert("Nominee Phone Number must be exactly 10 digits.");
+            return;
+        }
+
         // Validate Split Payment if Both
         if (formData.status !== 'Pending' && formData.paymentMethod === 'Both') {
             const cash = parseFloat(paymentSplit.cash) || 0;
@@ -355,9 +366,9 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
           <style>
             @page { size: landscape; margin: 4mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
-            .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; align-items: flex-start; }
-            .receipt-copy { width: 49%; border-right: 1px dashed #ccc; padding-right: 2mm; }
-            .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
+            table { width: 100%; border-collapse: collapse; }
+            td { width: 49%; vertical-align: top; padding: 0 4mm; }
+            td:first-child { border-right: 1px dashed #ccc; }
             
             .receipt-box { padding: 5px; display: flex; flex-direction: column; min-height: 120mm; position:relative; }
             
@@ -385,14 +396,12 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
           </style>
         </head>
         <body>
-          <div class="page-container">
-            <div class="receipt-copy">
-                ${getReceiptHTML('MEMBER COPY')}
-            </div>
-            <div class="receipt-copy">
-                ${getReceiptHTML('OFFICE COPY')}
-            </div>
-          </div>
+          <table>
+            <tr>
+              <td>${getReceiptHTML('MEMBER COPY')}</td>
+              <td>${getReceiptHTML('OFFICE COPY')}</td>
+            </tr>
+          </table>
         </body>
         </html>
     `;

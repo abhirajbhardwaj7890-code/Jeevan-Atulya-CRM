@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { MemberCard } from '../components/MemberCard';
 import { Search, Filter, UserPlus, Download, Users, X, CheckSquare, Square } from 'lucide-react';
-import { Member, UserRole, Agent, Interaction, MemberGroup } from '../types';
-import { MOCK_BRANCHES } from '../services/data';
+import { Member, UserRole, Agent, Interaction, MemberGroup, Branch } from '../types';
 
 interface MembersProps {
   members: Member[];
@@ -14,9 +13,10 @@ interface MembersProps {
   groups?: MemberGroup[];
   onUpdateGroup?: (group: MemberGroup) => void;
   onAddGroup?: (group: MemberGroup) => void;
+  branches?: Branch[]; // Added branches prop
 }
 
-export const Members: React.FC<MembersProps> = ({ members, agents = [], interactions = [], userRole, onSelectMember, onAddNew, groups = [], onUpdateGroup, onAddGroup }) => {
+export const Members: React.FC<MembersProps> = ({ members, agents = [], interactions = [], userRole, onSelectMember, onAddNew, groups = [], onUpdateGroup, onAddGroup, branches = [] }) => {
   // Persistence Key
   const STORAGE_KEY = 'jeevan_atulya_members_filters';
 
@@ -272,7 +272,7 @@ export const Members: React.FC<MembersProps> = ({ members, agents = [], interact
                 onChange={(e) => setBranchFilter(e.target.value as any)}
               >
                 <option value="All">All Branches</option>
-                {MOCK_BRANCHES.map(b => (
+                {branches.map(b => (
                   <option key={b.id} value={b.id}>{b.name}</option>
                 ))}
               </select>

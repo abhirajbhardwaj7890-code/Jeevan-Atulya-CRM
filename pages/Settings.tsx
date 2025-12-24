@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents, MOCK_BRANCHES } from '../services/data';
+import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents } from '../services/data';
 import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -562,7 +562,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     name: row.name || "Unknown Staff",
                     phone: String(row.phone || ""),
                     memberId: row.member_id || "",
-                    branchId: row.branch_id || (MOCK_BRANCHES[0]?.id || "BR-MAIN"),
+                    branchId: row.branch_id || "BR-MAIN",
                     commissionFee: parseFloat(row.commission_fee) || settings.defaultAgentFee,
                     status: 'Active',
                     activeMembers: 0,

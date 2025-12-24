@@ -21,20 +21,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     }
 };
 
-export const MOCK_BRANCHES: Branch[] = [
-    { id: 'BR-001', name: 'Main Branch', location: 'City Center', managerName: 'Rajesh Kumar' },
-    { id: 'BR-002', name: 'South Branch', location: 'Market Road', managerName: 'Priya Singh' }
-];
-
-export const MOCK_AGENTS: Agent[] = [
-    { id: 'AG-001', memberId: '1001', name: 'Amit Sharma', branchId: 'BR-001', phone: '9876543210', status: 'Active', activeMembers: 12, totalCollections: 50000 },
-    { id: 'AG-002', memberId: '1005', name: 'Sunita Verma', branchId: 'BR-002', phone: '9876543211', status: 'Active', activeMembers: 8, totalCollections: 32000 }
-];
-
-export const MOCK_NOTIFICATIONS: Notification[] = [
-    { id: '1', title: 'System Maintenance', message: 'Scheduled maintenance on Saturday 10 PM.', type: 'info', date: new Date().toISOString().split('T')[0], read: false },
-    { id: '2', title: 'Pending Approvals', message: '3 New member applications pending review.', type: 'warning', date: new Date().toISOString().split('T')[0], read: false }
-];
+// Mocks removed. Using clean empty states.
 
 // --- Data Mappers (CamelCase <-> Snake_Case) ---
 
@@ -117,6 +104,7 @@ export const mapAccountFromDB = (a: any): Account => {
         guarantors: a.guarantors || [],
         lowBalanceAlertThreshold: a.low_balance_alert_threshold,
         createdAt: a.created_at,
+        openingDate: a.opening_date,
         // Derive missing values from transactions if columns don't exist in DB
         emi: a.emi ? Number(a.emi) : (a.transactions?.[0]?.amount || 0),
         originalAmount: a.original_amount ? Number(a.original_amount) : (a.transactions?.[0]?.amount || 0),
@@ -185,7 +173,8 @@ const mapAccountToDB = (a: Account) => ({
     low_balance_alert_threshold: a.lowBalanceAlertThreshold ?? null,
     // Safely include these if they exist in schema, but we don't strictly rely on them now
     emi: a.emi ?? null,
-    original_amount: a.originalAmount ?? null
+    original_amount: a.originalAmount ?? null,
+    opening_date: a.openingDate || null
 });
 
 export const mapInteractionFromDB = (i: any): Interaction => ({
@@ -388,6 +377,7 @@ export const createAccount = (
         initialInterestRate: rate,
         termMonths: term > 0 ? term : undefined,
         guarantors: extra?.guarantors || [],
+        openingDate: extra?.date || new Date().toISOString().split('T')[0],
         transactions: [{
             id: `TX-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
             date: extra?.date || new Date().toISOString().split('T')[0],
@@ -402,32 +392,21 @@ export const createAccount = (
     };
 };
 
-// --- MOCK DATA GENERATOR ---
-const generateMockData = () => {
-    // CLEAN SLATE FOR TESTING - No default members
-    return { members: [], accounts: [], groups: [] };
-};
-
-// --- API Operations ---
-
-// --- API Operations ---
-
 // VOLATILE IN-MEMORY CACHE (Resets on Refresh)
 // This ensures data "effects members" during usability but vanishes on refresh as requested.
 let MEMORY_CACHE: any = null;
 
 const getMemoryCache = () => {
     if (!MEMORY_CACHE) {
-        const mocks = generateMockData();
         MEMORY_CACHE = {
-            members: mocks.members,
-            accounts: mocks.accounts,
+            members: [],
+            accounts: [],
             interactions: [],
             settings: { ...DEFAULT_SETTINGS },
             ledger: [],
-            branches: [...MOCK_BRANCHES],
-            agents: [...MOCK_AGENTS],
-            groups: mocks.groups || []
+            branches: [],
+            agents: [],
+            groups: []
         };
     }
     return MEMORY_CACHE;
@@ -458,8 +437,7 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             supabase.from('society_ledger').select('*'),
             supabase.from('branches').select('*'),
             supabase.from('agents').select('*'),
-            supabase.from('agents').select('*'),
-            supabase.from('settings').select('*')
+            supabase.from('app_settings').select('*')
         ]);
 
         // Fetch Groups (Simulated via local cache if table missing or fetch fails, for resilience during dev)
@@ -476,13 +454,29 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
 
         // Merge Settings
         const settings = { ...DEFAULT_SETTINGS };
-        (settingsRes.data || []).forEach((row: any) => {
-            const val = row.value;
-            if (row.key === 'interest_rates') { try { settings.interestRates = JSON.parse(val); } catch (e) { } }
-            else if (row.key === 'late_payment_fine') settings.latePaymentFine = Number(val);
-            else if (row.key === 'grace_period_days') settings.gracePeriodDays = Number(val);
-            else if (row.key === 'default_agent_fee') settings.defaultAgentFee = Number(val);
-        });
+
+        // Handle new schema format where specific columns exist on the first row
+        if (settingsRes.data && settingsRes.data.length > 0) {
+            // Check if data is in the new schema format (single row with columns)
+            const dbSettings = settingsRes.data[0];
+
+            // Try explicit column mapping first (priority)
+            if (dbSettings.interest_rates) settings.interestRates = dbSettings.interest_rates;
+            if (dbSettings.late_payment_fine !== undefined) settings.latePaymentFine = dbSettings.late_payment_fine;
+            if (dbSettings.grace_period_days !== undefined) settings.gracePeriodDays = dbSettings.grace_period_days;
+
+            // Fallback: Check if it's the old key-value format (array of {key, value} objects)
+            // This handles the case where the table might still be using the old schema or data migration hasn't happened
+            if (dbSettings.key && dbSettings.value) {
+                settingsRes.data.forEach((row: any) => {
+                    const val = row.value;
+                    if (row.key === 'interest_rates') { try { settings.interestRates = JSON.parse(val); } catch (e) { } }
+                    else if (row.key === 'late_payment_fine') settings.latePaymentFine = Number(val);
+                    else if (row.key === 'grace_period_days') settings.gracePeriodDays = Number(val);
+                    else if (row.key === 'default_agent_fee') settings.defaultAgentFee = Number(val);
+                });
+            }
+        }
 
         return { members, accounts, interactions, settings, ledger, branches, agents, groups };
     } catch (error) {

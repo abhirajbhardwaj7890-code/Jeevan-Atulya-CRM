@@ -23,11 +23,8 @@ import {
     upsertBranch,
     upsertAgent,
     saveSettings,
-    MOCK_BRANCHES,
-    MOCK_AGENTS,
     createAccount,
     DEFAULT_SETTINGS,
-    MOCK_NOTIFICATIONS,
     upsertGroup,
     deleteGroup
 } from './services/data';
@@ -48,12 +45,12 @@ const App: React.FC = () => {
     const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
     // Notification State
-    const [actionNotifications, setActionNotifications] = useState<Notification[]>(MOCK_NOTIFICATIONS);
+    const [actionNotifications, setActionNotifications] = useState<Notification[]>([]);
     const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(new Set());
 
     // Network State
-    const [branches, setBranches] = useState<Branch[]>(MOCK_BRANCHES);
-    const [agents, setAgents] = useState<Agent[]>(MOCK_AGENTS);
+    const [branches, setBranches] = useState<Branch[]>([]);
+    const [agents, setAgents] = useState<Agent[]>([]);
     const [groups, setGroups] = useState<MemberGroup[]>([]);
 
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -670,6 +667,7 @@ const App: React.FC = () => {
                         accounts={accounts}
                         interactions={interactions}
                         systemNotifications={[]} // Notifications now handled globally
+                        branches={branches}
                     />
                 )}
 
@@ -681,6 +679,7 @@ const App: React.FC = () => {
                         userRole={userRole}
                         onSelectMember={handleSelectMember}
                         onAddNew={() => setCurrentPage('new-member')}
+                        branches={branches}
                     />
                 )}
 
@@ -733,7 +732,7 @@ const App: React.FC = () => {
                 )}
 
                 {currentPage === 'reports' && (
-                    <Reports accounts={accounts} members={members} ledger={ledger} />
+                    <Reports accounts={accounts} members={members} ledger={ledger} agents={agents} />
                 )}
 
                 {currentPage === 'network' && (

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, LoanType, MemberDocument, UserRole, AppSettings, Guarantor, Nominee, LedgerEntry, Agent } from '../types';
 import { generateMemberSummary, analyzeFinancialHealth, draftInteractionNote, calculateMemberRisk } from '../services/gemini';
-import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle } from 'lucide-react';
+import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search } from 'lucide-react';
 
 interface MemberDetailProps {
     member: Member;
@@ -179,9 +179,33 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
     // Loan Guarantor State
     const [guarantors, setGuarantors] = useState({
-        g1Name: '', g1Phone: '', g1Rel: 'Friend',
-        g2Name: '', g2Phone: '', g2Rel: 'Family'
+        g1Name: '', g1Phone: '', g1Rel: 'Friend', g1MemberId: '',
+        g2Name: '', g2Phone: '', g2Rel: 'Family', g2MemberId: ''
     });
+    const [guarantorSearch, setGuarantorSearch] = useState({ g1: '', g2: '' });
+    const [showG1Results, setShowG1Results] = useState(false);
+    const [showG2Results, setShowG2Results] = useState(false);
+
+    const handleSelectGuarantor = (slot: 'g1' | 'g2', member: Member) => {
+        setGuarantors(prev => ({
+            ...prev,
+            [`${slot}Name`]: member.fullName,
+            [`${slot}Phone`]: member.phone,
+            [`${slot}MemberId`]: member.id
+        }));
+        setGuarantorSearch(prev => ({ ...prev, [slot]: '' }));
+        if (slot === 'g1') setShowG1Results(false);
+        else setShowG2Results(false);
+    };
+
+    const clearGuarantor = (slot: 'g1' | 'g2') => {
+        setGuarantors(prev => ({
+            ...prev,
+            [`${slot}Name`]: '',
+            [`${slot}Phone`]: '',
+            [`${slot}MemberId`]: ''
+        }));
+    };
 
     // Calculator State (Wizard)
     const [calcResult, setCalcResult] = useState<{
@@ -378,6 +402,17 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
     const submitEditMember = async (e: React.FormEvent) => {
         e.preventDefault();
+
+        // Validate Phone (10 digits)
+        const phoneRegex = /^\d{10}$/;
+        if (editMemberForm.phone && !phoneRegex.test(editMemberForm.phone)) {
+            alert("Member Phone Number must be exactly 10 digits.");
+            return;
+        }
+        if (editNomineeForm.phone && !phoneRegex.test(editNomineeForm.phone)) {
+            alert("Nominee Phone Number must be exactly 10 digits.");
+            return;
+        }
 
         const updatedMember: Member = {
             ...member,
@@ -689,9 +724,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
           <style>
             @page { size: landscape; margin: 4mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
-            .page-container { display: flex; flex-direction: row; width: 100%; justify-content: space-between; align-items: flex-start; }
-            .receipt-copy { width: 49%; border-right: 1px dashed #ccc; padding-right: 2mm; }
-            .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
+            table { width: 100%; border-collapse: collapse; }
+            td { width: 49%; vertical-align: top; padding: 0 4mm; }
+            td:first-child { border-right: 1px dashed #ccc; }
             
             .receipt-box { padding: 5px; display: flex; flex-direction: column; min-height: 120mm; position:relative; }
             
@@ -719,14 +754,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
           </style>
         </head>
         <body>
-          <div class="page-container">
-            <div class="receipt-copy">
-                ${getReceiptHTML('MEMBER COPY')}
-            </div>
-            <div class="receipt-copy">
-                ${getReceiptHTML('OFFICE COPY')}
-            </div>
-          </div>
+          <table>
+            <tr>
+              <td>${getReceiptHTML('MEMBER COPY')}</td>
+              <td>${getReceiptHTML('OFFICE COPY')}</td>
+            </tr>
+          </table>
         </body>
         </html>
     `;
@@ -1101,7 +1134,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         }
 
         if (P === 0) { setCalcResult(null); return; }
-        const maturityDate = new Date();
+        const maturityDate = new Date(accountForm.openingDate || new Date().toISOString().split('T')[0]);
         if (termDays > 0) maturityDate.setDate(maturityDate.getDate() + termDays);
         else maturityDate.setMonth(maturityDate.getMonth() + termMonths);
 
@@ -1383,8 +1416,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             const R = acc.interestRate || 0;
             const termMonths = acc.termMonths || 0;
             let matVal = 0;
-            if (acc.rdFrequency === 'Daily') {
-                const days = termMonths * 30; // Approximation for daily RD
+            if (acc.rdFrequency === 'Daily' && acc.maturityDate) {
+                const startDate = new Date(acc.openingDate || acc.createdAt || member.joinDate);
+                const matDate = new Date(acc.maturityDate);
+                const days = Math.round((matDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
                 matVal = (P * days) + ((P * (days * (days + 1)) / 2) * (R / 36500));
             } else {
                 matVal = (P * termMonths) + (P * (termMonths * (termMonths + 1) / 2) * (R / 1200));
@@ -1754,8 +1789,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                                         printReceipt(item as any, (item as any).fullAcc, (item as any).fullAcc.balance);
                                                                     } else {
                                                                         // Custom Receipt for Fees/Ledger
-                                                                        const mockAccount = { type: 'FEE_PAYMENT', accountNumber: 'SOCIETY-LEDGER' } as any;
-                                                                        printReceipt(item as any, mockAccount, 0);
+                                                                        const placeholderAccount = { type: 'FEE_PAYMENT', accountNumber: 'SOCIETY-LEDGER' } as any;
+                                                                        printReceipt(item as any, placeholderAccount, 0);
                                                                     }
                                                                 }}
                                                                 className="opacity-0 group-hover:opacity-100 transition-opacity bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white px-3 py-1 rounded-md text-xs font-bold border border-blue-200"
@@ -2127,34 +2162,132 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             <div className="border-t pt-4">
                                                 <h4 className="font-bold text-slate-900 text-sm mb-3">Guarantor Details (Required)</h4>
                                                 <div className="space-y-4">
-                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                    {/* Guarantor 1 */}
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 relative">
                                                         <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Guarantor 1 (Primary)</p>
-                                                        <div className="grid grid-cols-2 gap-2 mb-2">
-                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Name" value={guarantors.g1Name} onChange={e => setGuarantors({ ...guarantors, g1Name: e.target.value })} />
-                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Phone" value={guarantors.g1Phone} onChange={e => setGuarantors({ ...guarantors, g1Phone: e.target.value })} />
+
+                                                        {guarantors.g1MemberId ? (
+                                                            <div className="bg-white p-2 rounded border border-blue-200 flex justify-between items-center mb-2">
+                                                                <div>
+                                                                    <p className="text-sm font-bold text-slate-900">{guarantors.g1Name}</p>
+                                                                    <p className="text-xs text-slate-500">{guarantors.g1MemberId} • {guarantors.g1Phone}</p>
+                                                                </div>
+                                                                <button type="button" onClick={() => clearGuarantor('g1')} className="text-red-500 hover:bg-red-50 p-1 rounded"><X size={16} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="mb-2 relative">
+                                                                <div className="relative">
+                                                                    <Search size={14} className="absolute left-2 top-2.5 text-slate-400" />
+                                                                    <input
+                                                                        type="text"
+                                                                        className="w-full border p-2 pl-7 rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                                                        placeholder="Search Member ID or Name..."
+                                                                        value={guarantorSearch.g1}
+                                                                        onChange={e => {
+                                                                            setGuarantorSearch({ ...guarantorSearch, g1: e.target.value });
+                                                                            setShowG1Results(true);
+                                                                        }}
+                                                                        onFocus={() => setShowG1Results(true)}
+                                                                    />
+                                                                </div>
+                                                                {showG1Results && guarantorSearch.g1 && (
+                                                                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-200 shadow-lg rounded-b-lg max-h-48 overflow-y-auto z-10">
+                                                                        {allMembers.filter(m => m.id !== member.id && (m.fullName.toLowerCase().includes(guarantorSearch.g1.toLowerCase()) || m.id.toLowerCase().includes(guarantorSearch.g1.toLowerCase())))
+                                                                            .map(m => (
+                                                                                <button
+                                                                                    key={m.id}
+                                                                                    type="button"
+                                                                                    className="w-full text-left p-2 hover:bg-blue-50 text-sm border-b border-slate-50 last:border-0"
+                                                                                    onClick={() => handleSelectGuarantor('g1', m)}
+                                                                                >
+                                                                                    <div className="font-bold text-slate-900">{m.fullName}</div>
+                                                                                    <div className="text-xs text-slate-500">{m.id} • {m.phone}</div>
+                                                                                </button>
+                                                                            ))}
+                                                                        {allMembers.filter(m => m.id !== member.id && (m.fullName.toLowerCase().includes(guarantorSearch.g1.toLowerCase()) || m.id.toLowerCase().includes(guarantorSearch.g1.toLowerCase()))).length === 0 && (
+                                                                            <div className="p-2 text-xs text-slate-400 text-center">No members found</div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <input className="w-full border p-2 rounded text-sm bg-slate-100 text-slate-500" value={guarantors.g1Phone} readOnly placeholder="Phone" />
+                                                            </div>
+                                                            <select
+                                                                className="w-full border p-2 rounded text-sm bg-white"
+                                                                value={guarantors.g1Rel}
+                                                                onChange={e => setGuarantors({ ...guarantors, g1Rel: e.target.value })}
+                                                            >
+                                                                {RELATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                            </select>
                                                         </div>
-                                                        <select
-                                                            className="w-full border p-2 rounded text-sm bg-white"
-                                                            value={guarantors.g1Rel}
-                                                            onChange={e => setGuarantors({ ...guarantors, g1Rel: e.target.value })}
-                                                        >
-                                                            {RELATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                        </select>
                                                     </div>
 
-                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                                                    {/* Guarantor 2 */}
+                                                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100 relative">
                                                         <p className="text-xs font-bold text-slate-500 mb-2 uppercase">Guarantor 2 (Secondary)</p>
-                                                        <div className="grid grid-cols-2 gap-2 mb-2">
-                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Name (Optional)" value={guarantors.g2Name} onChange={e => setGuarantors({ ...guarantors, g2Name: e.target.value })} />
-                                                            <input className="border p-2 rounded text-sm bg-white" placeholder="Phone" value={guarantors.g2Phone} onChange={e => setGuarantors({ ...guarantors, g2Phone: e.target.value })} />
+
+                                                        {guarantors.g2MemberId ? (
+                                                            <div className="bg-white p-2 rounded border border-blue-200 flex justify-between items-center mb-2">
+                                                                <div>
+                                                                    <p className="text-sm font-bold text-slate-900">{guarantors.g2Name}</p>
+                                                                    <p className="text-xs text-slate-500">{guarantors.g2MemberId} • {guarantors.g2Phone}</p>
+                                                                </div>
+                                                                <button type="button" onClick={() => clearGuarantor('g2')} className="text-red-500 hover:bg-red-50 p-1 rounded"><X size={16} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="mb-2 relative">
+                                                                <div className="relative">
+                                                                    <Search size={14} className="absolute left-2 top-2.5 text-slate-400" />
+                                                                    <input
+                                                                        type="text"
+                                                                        className="w-full border p-2 pl-7 rounded text-sm bg-white focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                                                        placeholder="Search Member ID or Name..."
+                                                                        value={guarantorSearch.g2}
+                                                                        onChange={e => {
+                                                                            setGuarantorSearch({ ...guarantorSearch, g2: e.target.value });
+                                                                            setShowG2Results(true);
+                                                                        }}
+                                                                        onFocus={() => setShowG2Results(true)}
+                                                                    />
+                                                                </div>
+                                                                {showG2Results && guarantorSearch.g2 && (
+                                                                    <div className="absolute top-full left-0 right-0 bg-white border border-slate-200 shadow-lg rounded-b-lg max-h-48 overflow-y-auto z-10">
+                                                                        {allMembers.filter(m => m.id !== member.id && (m.fullName.toLowerCase().includes(guarantorSearch.g2.toLowerCase()) || m.id.toLowerCase().includes(guarantorSearch.g2.toLowerCase())))
+                                                                            .map(m => (
+                                                                                <button
+                                                                                    key={m.id}
+                                                                                    type="button"
+                                                                                    className="w-full text-left p-2 hover:bg-blue-50 text-sm border-b border-slate-50 last:border-0"
+                                                                                    onClick={() => handleSelectGuarantor('g2', m)}
+                                                                                >
+                                                                                    <div className="font-bold text-slate-900">{m.fullName}</div>
+                                                                                    <div className="text-xs text-slate-500">{m.id} • {m.phone}</div>
+                                                                                </button>
+                                                                            ))}
+                                                                        {allMembers.filter(m => m.id !== member.id && (m.fullName.toLowerCase().includes(guarantorSearch.g2.toLowerCase()) || m.id.toLowerCase().includes(guarantorSearch.g2.toLowerCase()))).length === 0 && (
+                                                                            <div className="p-2 text-xs text-slate-400 text-center">No members found</div>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        )}
+
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                            <div>
+                                                                <input className="w-full border p-2 rounded text-sm bg-slate-100 text-slate-500" value={guarantors.g2Phone} readOnly placeholder="Phone" />
+                                                            </div>
+                                                            <select
+                                                                className="w-full border p-2 rounded text-sm bg-white"
+                                                                value={guarantors.g2Rel}
+                                                                onChange={e => setGuarantors({ ...guarantors, g2Rel: e.target.value })}
+                                                            >
+                                                                {RELATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                                                            </select>
                                                         </div>
-                                                        <select
-                                                            className="w-full border p-2 rounded text-sm bg-white"
-                                                            value={guarantors.g2Rel}
-                                                            onChange={e => setGuarantors({ ...guarantors, g2Rel: e.target.value })}
-                                                        >
-                                                            {RELATION_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                                                        </select>
                                                     </div>
                                                 </div>
                                             </div>

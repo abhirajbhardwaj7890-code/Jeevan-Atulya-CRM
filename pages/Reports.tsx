@@ -1,14 +1,14 @@
 
 import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
-import { Account, Member, AccountType, LoanType, LedgerEntry } from '../types';
-import { MOCK_AGENTS } from '../services/data';
+import { Account, Member, AccountType, LoanType, LedgerEntry, Agent } from '../types';
 import { Download, Users, TrendingUp, AlertTriangle, ShieldCheck, Filter, Upload } from 'lucide-react';
 
 interface ReportsProps {
     accounts: Account[];
     members: Member[];
     ledger: LedgerEntry[];
+    agents: Agent[];
 }
 
 const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -19,13 +19,13 @@ const formatCurrency = (amount: number) => {
     return `₹${amount.toLocaleString('en-IN')}`;
 };
 
-export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) => {
+export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger, agents }) => {
     const [startDate, setStartDate] = useState('');
     const [endDate, setEndDate] = useState('');
     const [showDayWiseModal, setShowDayWiseModal] = useState(false);
     const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
 
-    // Filtering Logic based on account creation date (mocked logic as account creation date isn't strictly tracked in types, using joinDate approx)
+    // Filtering Logic based on account creation date (uses joinDate for approximation)
     const filteredAccounts = accounts;
 
     // Calculate stats based on filtered data
@@ -103,7 +103,7 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) =
     };
 
     const handleImportData = () => {
-        // Mock Import function
+        // Import function placeholder
         alert("Import feature ready. Please select a CSV file to upload historical data.");
         const input = document.createElement('input');
         input.type = 'file';
@@ -290,7 +290,7 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) =
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {MOCK_AGENTS.slice(0, 5).map((agent, i) => {
+                                {agents.slice(0, 5).map((agent, i) => {
                                     // Calculate real stats
                                     const agentMembers = members.filter(m => m.agentId === agent.id);
                                     const memberIds = agentMembers.map(m => m.id);
