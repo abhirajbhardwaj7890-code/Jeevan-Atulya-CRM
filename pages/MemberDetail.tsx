@@ -1364,8 +1364,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             termMonths: accountForm.type === AccountType.FIXED_DEPOSIT
                 ? (parseFloat(accountForm.tenureYears) || 0) * 12
                 : accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
-                    ? Math.round((parseInt(accountForm.tenureDays) || 0) / 30)
+                    ? Math.round((parseInt(accountForm.tenureDays) || 0) / 30.41) // Approximation for compatibility
                     : (parseInt(accountForm.tenureMonths) || 0),
+            tenureDays: accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
+                ? parseInt(accountForm.tenureDays) || 0
+                : undefined,
             maturityDate: calcResult?.maturityDate,
             rdFrequency: accountForm.type === AccountType.RECURRING_DEPOSIT ? accountForm.rdFrequency as any : undefined,
             originalAmount: totalAmountForAccount, // Total debt for personal loan
@@ -1506,7 +1509,19 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             rows.push({ label: 'Installment', value: formatCurrency(acc.emi || 0) + (acc.rdFrequency === 'Daily' ? '/day' : '/mo'), icon: Target });
             rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });
             rows.push({ label: 'Maturity Date', value: formatDate(acc.maturityDate), icon: Clock });
-            const tenureText = acc.rdFrequency === 'Daily' ? `${Math.round((acc.termMonths || 0) * 30.41)} Days` : `${acc.termMonths} Months`;
+
+            // Improved tenure calculation with fallback
+            const termMonths = acc.termMonths || 0;
+            let tenureText = '';
+
+            if (acc.rdFrequency === 'Daily') {
+                // Use explicit tenureDays if available, else fallback to termMonths conversion
+                const days = acc.tenureDays || (termMonths > 0 ? Math.round(termMonths * 30.41) : 0);
+                tenureText = days > 0 ? `${days} Days` : 'Not Set';
+            } else {
+                tenureText = termMonths > 0 ? `${termMonths} Months` : 'Not Set';
+            }
+
             rows.push({ label: 'Tenure', value: tenureText, icon: History });
         } else if (isOD || isCD) {
             rows.push({ label: 'Interest Rate', value: `${acc.interestRate}%`, icon: TrendingUp });

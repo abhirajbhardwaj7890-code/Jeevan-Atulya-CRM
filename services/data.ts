@@ -86,6 +86,25 @@ const mapMemberToDB = (m: Member) => ({
 });
 
 export const mapAccountFromDB = (a: any): Account => {
+    // Calculate term_months if NULL but maturity_date exists
+    let termMonths = a.term_months;
+
+    // Self-healing: Calculate term_months from maturity_date if missing
+    if (!termMonths && a.maturity_date && (a.type === 'Recurring Deposit' || a.type === 'Fixed Deposit')) {
+        const openingDate = new Date(a.opening_date || a.created_at);
+        const maturityDate = new Date(a.maturity_date);
+        const diffTime = maturityDate.getTime() - openingDate.getTime();
+        const diffMonths = Math.round(diffTime / (1000 * 60 * 60 * 24 * 30.41));
+        termMonths = diffMonths > 0 ? diffMonths : 12; // Default to 12 if calculation fails
+    }
+
+    // Fallback defaults for RD/FD without maturity_date
+    if (!termMonths && a.type === 'Recurring Deposit') {
+        termMonths = 24; // Default 2 years for RD
+    } else if (!termMonths && a.type === 'Fixed Deposit') {
+        termMonths = 12; // Default 1 year for FD
+    }
+
     const result: Account = {
         id: a.id,
         memberId: a.member_id,
@@ -99,7 +118,8 @@ export const mapAccountFromDB = (a: any): Account => {
         maturityDate: a.maturity_date,
         loanType: a.loan_type as LoanType,
         currency: a.currency,
-        termMonths: a.term_months,
+        termMonths: termMonths, // Use calculated/fallback value
+        tenureDays: a.tenure_days, // New explicit field
         odLimit: a.od_limit,
         rdFrequency: a.rd_frequency,
         guarantors: a.guarantors || [],
@@ -169,6 +189,7 @@ const mapAccountToDB = (a: Account) => ({
     loan_type: a.loanType ?? null,
     currency: a.currency,
     term_months: a.termMonths ?? null,
+    tenure_days: a.tenureDays ?? null,
     od_limit: a.odLimit ?? null,
     rd_frequency: a.rdFrequency ?? null,
     guarantors: a.guarantors || [],

@@ -126,6 +126,7 @@ export interface Account {
   maturityDate?: string; // For FD, RD or Loans
   maturityProcessed?: boolean; // Flag to check if maturity auto-transfer is done
   termMonths?: number; // For FD/RD duration
+  tenureDays?: number; // For Daily RDs (Exact Days)
   transactions: Transaction[];
   guarantors?: Guarantor[];
   lowBalanceAlertThreshold?: number; // New field for alerts
