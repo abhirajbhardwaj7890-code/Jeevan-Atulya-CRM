@@ -9,10 +9,11 @@ interface SettingsPageProps {
     onUpdateSettings: (s: AppSettings) => Promise<void>;
     members?: Member[]; // Added for validation
     accounts?: Account[]; // Added for transaction ID resolution
+    ledger?: LedgerEntry[]; // Added for maintenance checks
     onImportSuccess?: () => void;
 }
 
-export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], accounts = [], onImportSuccess }) => {
+export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], accounts = [], ledger = [], onImportSuccess }) => {
     const [activeTab, setActiveTab] = useState<'config' | 'import' | 'maintenance'>('config');
     const [form, setForm] = useState(settings);
     const [isSaving, setIsSaving] = useState(false);
@@ -1046,6 +1047,61 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                 >
                                     {isRepairing ? <Loader className="animate-spin" size={18} /> : <CheckCircle size={18} />}
                                     Run Repair
+                                </button>
+                            </div>
+
+                            <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <h4 className="font-bold text-amber-900">Backfill Registration Fees</h4>
+                                    <p className="text-sm text-amber-700 max-w-md">
+                                        Identifies members who are missing the compulsory ₹1550 registration fee in the society ledger.
+                                        This utility will create missing Income entries (Admission Fees & Deposits) for these members.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm("This will scan all members and add missing ₹1550 registration fee ledger entries. Continue?")) return;
+                                        setIsRepairing(true);
+                                        try {
+                                            const missingLedger: LedgerEntry[] = [];
+                                            members.forEach(m => {
+                                                const regId = `LDG-REG-${m.id}`;
+                                                const exists = ledger.some(l => l.id === regId || (l.description.includes("Reg") && l.description.includes(m.fullName)));
+
+                                                if (!exists) {
+                                                    missingLedger.push({
+                                                        id: regId,
+                                                        date: m.joinDate || new Date().toISOString().split('T')[0],
+                                                        description: `Bulk Reg - ${m.fullName}`,
+                                                        amount: 1550,
+                                                        type: 'Income',
+                                                        category: 'Admission Fees & Deposits'
+                                                    });
+                                                }
+                                            });
+
+                                            if (missingLedger.length === 0) {
+                                                alert("No members found with missing registration fees.");
+                                                return;
+                                            }
+
+                                            if (confirm(`Found ${missingLedger.length} members missing registration fees. Backfill now?`)) {
+                                                await bulkUpsertLedgerEntries(missingLedger);
+                                                alert(`Successfully backfilled ${missingLedger.length} registration fee entries!`);
+                                                if (onImportSuccess) onImportSuccess(); // Refresh data
+                                            }
+                                        } catch (err: any) {
+                                            console.error(err);
+                                            alert("Backfill failed: " + err.message);
+                                        } finally {
+                                            setIsRepairing(false);
+                                        }
+                                    }}
+                                    disabled={isRepairing}
+                                    className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm"
+                                >
+                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <Database size={18} />}
+                                    Backfill Fees
                                 </button>
                             </div>
                         </div>

@@ -753,6 +753,7 @@ const App: React.FC = () => {
                         onUpdateSettings={handleUpdateSettings}
                         members={members}
                         accounts={accounts}
+                        ledger={ledger}
                         onImportSuccess={handleRefresh}
                     />
                 )}
