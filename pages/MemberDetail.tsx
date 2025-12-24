@@ -1629,6 +1629,15 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             {/* Header and Tabs unchanged */}
             <div className="flex items-center gap-4 mb-6">
                 <button onClick={onBack} className="p-2 hover:bg-slate-100 rounded-full transition-colors"><ArrowLeft className="text-slate-600" /></button>
+
+                {/* Member Avatar with ID Badge */}
+                <div className="relative">
+                    <img src={member.avatarUrl} alt={member.fullName} className="w-16 h-16 rounded-full object-cover border-2 border-white shadow-md" />
+                    <div className="absolute -bottom-1 -right-1 bg-blue-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full border-2 border-white shadow-sm">
+                        {member.id}
+                    </div>
+                </div>
+
                 <div className="flex-1">
                     <div className="flex items-center gap-2">
                         <h1 className="text-2xl font-bold text-slate-900">{member.fullName}</h1>
