@@ -22,7 +22,8 @@ export enum AccountStatus {
   PENDING = 'Pending',
   DORMANT = 'Dormant',
   CLOSED = 'Closed',
-  DEFAULTED = 'Defaulted'
+  DEFAULTED = 'Defaulted',
+  MATURED = "MATURED"
 }
 
 export type UserRole = 'Admin' | 'Staff';
@@ -37,6 +38,7 @@ export interface AppSettings {
     fixedDeposit: number;
     recurringDeposit: number;
     compulsoryDeposit: number;
+    shareMoney: number;
     loan: {
       home: number;
       personal: number;

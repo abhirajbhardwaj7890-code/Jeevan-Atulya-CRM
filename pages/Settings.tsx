@@ -417,12 +417,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         url: '#'
                     };
 
-                    // Ledger Entry for registration
-                    const totalFees = 450 + 400 + 100 + 400 + 200; // Building + Welfare + Entry + SM + CD
+                    // Ledger Entry for registration (Income portion only)
+                    const totalFees = 950; // Building + Welfare + Entry (excludes 400 SM + 200 CD)
                     ledgerToImport.push({
                         id: `LDG-REG-${memberId}`,
                         date: memberJoinDate,
-                        description: `Bulk Reg - ${row.full_name || 'Imported Member'}`,
+                        description: `Bulk Reg Fee - ${row.full_name || 'Imported Member'}`,
                         amount: totalFees,
                         type: 'Income',
                         category: 'Admission Fees & Deposits'
@@ -1054,13 +1054,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                 <div>
                                     <h4 className="font-bold text-amber-900">Backfill Registration Fees</h4>
                                     <p className="text-sm text-amber-700 max-w-md">
-                                        Identifies members who are missing the compulsory ₹1550 registration fee in the society ledger.
-                                        This utility will create missing Income entries (Admission Fees & Deposits) for these members.
+                                        Identifies members who are missing the registration fee (Income portion ₹950) in the society ledger.
+                                        This utility will create missing Income entries for these members.
                                     </p>
                                 </div>
                                 <button
                                     onClick={async () => {
-                                        if (!confirm("This will scan all members and add missing ₹1550 registration fee ledger entries. Continue?")) return;
+                                        if (!confirm("This will scan all members and add missing ₹950 registration fee income entries. Continue?")) return;
                                         setIsRepairing(true);
                                         try {
                                             const missingLedger: LedgerEntry[] = [];
@@ -1072,8 +1072,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                     missingLedger.push({
                                                         id: regId,
                                                         date: m.joinDate || new Date().toISOString().split('T')[0],
-                                                        description: `Bulk Reg - ${m.fullName}`,
-                                                        amount: 1550,
+                                                        description: `Bulk Reg Fee - ${m.fullName}`,
+                                                        amount: 950,
                                                         type: 'Income',
                                                         category: 'Admission Fees & Deposits'
                                                     });
@@ -1085,9 +1085,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 return;
                                             }
 
-                                            if (confirm(`Found ${missingLedger.length} members missing registration fees. Backfill now?`)) {
+                                            if (confirm(`Found ${missingLedger.length} members missing registration fees. Backfill ₹950 each now?`)) {
                                                 await bulkUpsertLedgerEntries(missingLedger);
-                                                alert(`Successfully backfilled ${missingLedger.length} registration fee entries!`);
+                                                alert(`Successfully backfilled ${missingLedger.length} registration fee income entries!`);
                                                 if (onImportSuccess) onImportSuccess(); // Refresh data
                                             }
                                         } catch (err: any) {

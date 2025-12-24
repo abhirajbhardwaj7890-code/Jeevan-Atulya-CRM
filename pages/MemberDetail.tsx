@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, LoanType, MemberDocument, UserRole, AppSettings, Guarantor, Nominee, LedgerEntry, Agent } from '../types';
 import { generateMemberSummary, analyzeFinancialHealth, draftInteractionNote, calculateMemberRisk } from '../services/gemini';
-import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search, DollarSign } from 'lucide-react';
+import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search, DollarSign, XCircle } from 'lucide-react';
 
 interface MemberDetailProps {
     member: Member;
@@ -865,7 +865,20 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     </div>
 
                     <div class="other-balances" style="display:flex; justify-content:space-between; font-weight:bold;">
-                        <span style="font-size: 9px; color: #000;">SM Bal: ₹${smBal.toFixed(2)} | CD Bal: ₹${cdBal.toFixed(2)} | ${acc.type === AccountType.RECURRING_DEPOSIT && acc.rdFrequency === 'Daily' ? 'DD' : 'RD'} Bal: ₹${balanceAfter.toFixed(2)}</span>
+                        <span style="font-size: 8px; color: #000; text-align: center; width: 100%;">
+                            ${accounts
+                        .filter(a => a.type !== AccountType.LOAN && a.status === AccountStatus.ACTIVE)
+                        .map(a => {
+                            let label = a.type === AccountType.SHARE_CAPITAL ? 'SM' :
+                                a.type === AccountType.COMPULSORY_DEPOSIT ? 'CD' :
+                                    a.type === AccountType.RECURRING_DEPOSIT ? (a.rdFrequency === 'Daily' ? 'DD' : 'RD') :
+                                        a.type === AccountType.FIXED_DEPOSIT ? 'FD' :
+                                            a.type === AccountType.OPTIONAL_DEPOSIT ? 'OD' : 'SB';
+                            const bal = a.id === acc.id ? balanceAfter : a.balance;
+                            return `${label}: ₹${bal.toFixed(0)}`;
+                        })
+                        .join(' | ')}
+                        </span>
                     </div>
                     <div class="nice-day">Have a Nice Day</div>
                 </div>`;
@@ -928,6 +941,20 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 <div class="row"><span class="label">Available Balance:</span><span class="val" style="font-weight: bold;">${formatCurrency(balanceAfter)}</span></div>
                 <div class="footer">
                     <div class="sig-line">Authorized Signatory</div>
+                </div>
+                <div style="margin-top: 10px; padding-top: 5px; border-top: 1px solid #ccc; font-size: 8px; font-weight: bold; text-align: center;">
+                    ${accounts
+                    .filter(a => a.type !== AccountType.LOAN && a.status === AccountStatus.ACTIVE)
+                    .map(a => {
+                        let label = a.type === AccountType.SHARE_CAPITAL ? 'SM' :
+                            a.type === AccountType.COMPULSORY_DEPOSIT ? 'CD' :
+                                a.type === AccountType.RECURRING_DEPOSIT ? (a.rdFrequency === 'Daily' ? 'DD' : 'RD') :
+                                    a.type === AccountType.FIXED_DEPOSIT ? 'FD' :
+                                        a.type === AccountType.OPTIONAL_DEPOSIT ? 'OD' : 'SB';
+                        const bal = a.id === acc.id ? balanceAfter : a.balance;
+                        return `${label}: ₹${bal.toFixed(0)}`;
+                    })
+                    .join(' | ')}
                 </div>
             </div>`;
         };
@@ -1301,38 +1328,16 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         const openingBalance = parseFloat(accountForm.amount) || 0;
 
-        // EMERGENCY LOAN FEES CHECK (700rs from Optional Deposit)
+        // EMERGENCY LOAN FEES CHECK (₹700)
         if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY) {
-            const odAccount = accounts.find(a => a.type === AccountType.OPTIONAL_DEPOSIT);
             const feeAmount = 700;
 
-            if (!odAccount) {
-                alert("Optional Deposit account not found. Member must have an Optional Deposit account to pay processing fees.");
-                return;
-            }
-
-            if (odAccount.balance < feeAmount) {
-                alert("Not enough balance in Optional deposit");
-                return;
-            }
-
-            // Deduct from Optional Deposit
-            const feeTx: Transaction = {
-                id: `TX-FEE-${Date.now()}`,
-                amount: feeAmount,
-                type: 'debit',
-                description: `Processing fee for Emergency Loan - ${openingBalance}`,
-                date: accountForm.openingDate, // Use opening date for fee transaction
-                paymentMethod: 'Cash' // Internal transfer basically
-            };
-            onAddTransaction(odAccount.id, feeTx);
-
-            // Add to Ledger as Income
+            // Add to Ledger as Income (Cash)
             onAddLedgerEntry({
                 id: `LDG-FEES-${Date.now()}`,
                 memberId: member.id,
-                date: accountForm.openingDate, // Use opening date
-                description: `Loan Fees (Emergency) - ${member.fullName} | Deduct from OD | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
+                date: accountForm.openingDate,
+                description: `Loan Fees (Emergency) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
                 amount: feeAmount,
                 type: 'Income',
                 category: 'Loan Processing Fees',
@@ -2986,9 +2991,94 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                 </>
                                             )}
                                             {(isFD || isRD) && (
-                                                <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm">
-                                                    <div className="flex items-center gap-2 mb-2 text-slate-400"><CheckCircle size={14} /> <span className="text-[10px] font-bold uppercase">Maturity Date</span></div>
-                                                    <p className="text-sm font-bold text-green-600">{formatDate(viewingAccount.maturityDate)}</p>
+                                                <div className="p-4 rounded-xl border border-slate-100 bg-white shadow-sm flex justify-between items-center group/closure">
+                                                    <div>
+                                                        <div className="flex items-center gap-2 mb-2 text-slate-400"><CheckCircle size={14} /> <span className="text-[10px] font-bold uppercase">Maturity Date</span></div>
+                                                        <p className="text-sm font-bold text-green-600">{formatDate(viewingAccount.maturityDate)}</p>
+                                                    </div>
+                                                    {isFD && viewingAccount.status === AccountStatus.ACTIVE && (
+                                                        <button
+                                                            onClick={async () => {
+                                                                if (confirm("Are you sure you want to close this FD early?")) {
+                                                                    // 1. Calculate Interest + Principal (Simple logic for now: Full Amount)
+                                                                    const finalAmount = viewingAccount.balance; // Assuming balance includes everything for now
+
+                                                                    // 2. Find or Create Optional Deposit Account
+                                                                    let odAccount = accounts.find(a => a.type === AccountType.OPTIONAL_DEPOSIT);
+                                                                    let odAccountId = odAccount?.id;
+
+                                                                    if (!odAccount) {
+                                                                        if (confirm("No Optional Deposit account found. Create one automatically to transfer funds?")) {
+                                                                            const newOD: Account = {
+                                                                                id: `ACC-OD-${member.id}-${Date.now()}`,
+                                                                                memberId: member.id,
+                                                                                type: AccountType.OPTIONAL_DEPOSIT,
+                                                                                accountNumber: `OD-${member.id.toString().padStart(4, '0')}`,
+                                                                                status: AccountStatus.ACTIVE,
+                                                                                balance: 0,
+                                                                                interestRate: appSettings.interestRates.optionalDeposit || 0,
+                                                                                openingDate: new Date().toISOString().split('T')[0],
+                                                                                currency: 'INR',
+                                                                                transactions: []
+                                                                            };
+                                                                            onAddAccount(member.id, newOD);
+                                                                            odAccount = newOD;
+                                                                            odAccountId = newOD.id;
+                                                                            alert(`Automatically created Optional Deposit Account: ${newOD.accountNumber}`);
+                                                                        } else {
+                                                                            return; // User cancelled creation
+                                                                        }
+                                                                    }
+
+                                                                    if (odAccountId) {
+                                                                        // 3. Mark FD as Matured
+                                                                        const updatedFD: Account = {
+                                                                            ...viewingAccount,
+                                                                            status: AccountStatus.MATURED,
+                                                                            maturityDate: new Date().toISOString().split('T')[0],
+                                                                            balance: 0 // Zero out FD
+                                                                        };
+                                                                        onUpdateAccount(updatedFD);
+                                                                        setViewingAccount(updatedFD);
+
+                                                                        // 4. Create Transfer Transaction (Debit FD)
+                                                                        const debitTx: Transaction = {
+                                                                            id: `TX-CLOSE-FD-${Date.now()}`,
+                                                                            amount: finalAmount,
+                                                                            type: 'debit',
+                                                                            category: 'Transfer',
+                                                                            description: `FD Closure Transfer to ${odAccount!.accountNumber}`,
+                                                                            date: new Date().toISOString().split('T')[0],
+                                                                            paymentMethod: 'Cash'
+                                                                        };
+                                                                        onAddTransaction(viewingAccount.id, debitTx);
+
+                                                                        // 5. Create Transfer Transaction (Credit OD)
+                                                                        const creditTx: Transaction = {
+                                                                            id: `TX-DEP-OD-${Date.now()}`,
+                                                                            amount: finalAmount,
+                                                                            type: 'credit',
+                                                                            category: 'Deposit',
+                                                                            description: `Transfer from FD Closure (${viewingAccount.accountNumber})`,
+                                                                            date: new Date().toISOString().split('T')[0],
+                                                                            paymentMethod: 'Cash'
+                                                                        };
+                                                                        onAddTransaction(odAccountId, creditTx);
+
+                                                                        // Update OD Balance manually since we are in the closure flow
+                                                                        // Note: onAddTransaction should handle balance update if properly implemented, 
+                                                                        // but we might need to trigger a refresh or update the local odAccount state if we were viewing it.
+                                                                        // Since we are viewing the FD, the global refresh via onUpdateAccount/onAddTransaction should suffice for the OD background update.
+
+                                                                        alert(`FD Closed. ₹${finalAmount} transferred to Optional Deposit (${odAccount!.accountNumber}).`);
+                                                                    }
+                                                                }
+                                                            }}
+                                                            className="bg-red-50 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase flex items-center gap-1 transition-colors"
+                                                        >
+                                                            <XCircle size={12} /> Early Closure
+                                                        </button>
+                                                    )}
                                                 </div>
                                             )}
                                         </div>

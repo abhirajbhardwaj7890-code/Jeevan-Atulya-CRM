@@ -9,7 +9,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
         optionalDeposit: 3.5,
         fixedDeposit: 6.8,
         recurringDeposit: 6.5,
-        compulsoryDeposit: 4.0,
+        compulsoryDeposit: 10.0,
+        shareMoney: 10.0,
         loan: {
             home: 8.5,
             personal: 12.0,
