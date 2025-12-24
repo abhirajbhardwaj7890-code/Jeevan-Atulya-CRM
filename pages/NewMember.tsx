@@ -184,21 +184,25 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             // Construct Initial Accounts
             const initialAccountStatus = AccountStatus.ACTIVE;
 
-            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, parseFloat(formData.shareMoney as any) || 0, undefined, { date: formData.joinDate }, 1, settings);
+            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, parseFloat(formData.shareMoney as any) || 0, undefined, {
+                date: formData.joinDate,
+                paymentMethod: formData.paymentMethod,
+                utrNumber: formData.utrNumber
+            }, 1, settings);
             shareCap.id = `ACC-${newMember.id}-SHR-INIT`;
             if (shareCap.transactions.length > 0) {
                 shareCap.transactions[0].id = `TX-${newMember.id}-SHR-INIT`;
-                shareCap.transactions[0].paymentMethod = formData.paymentMethod;
-                shareCap.transactions[0].utrNumber = formData.utrNumber;
             }
             shareCap.status = initialAccountStatus;
 
-            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, parseFloat(formData.compulsoryDeposit as any) || 0, undefined, { date: formData.joinDate }, 2, settings);
+            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, parseFloat(formData.compulsoryDeposit as any) || 0, undefined, {
+                date: formData.joinDate,
+                paymentMethod: formData.paymentMethod,
+                utrNumber: formData.utrNumber
+            }, 2, settings);
             compDep.id = `ACC-${newMember.id}-CD-INIT`;
             if (compDep.transactions.length > 0) {
                 compDep.transactions[0].id = `TX-${newMember.id}-CD-INIT`;
-                compDep.transactions[0].paymentMethod = formData.paymentMethod;
-                compDep.transactions[0].utrNumber = formData.utrNumber;
             }
             compDep.status = initialAccountStatus;
 

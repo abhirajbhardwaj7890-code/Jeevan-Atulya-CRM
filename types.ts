@@ -133,6 +133,10 @@ export interface Account {
   createdAt?: string; // Metadata from database
   openingDate?: string; // Account opening date
   lastInterestPostDate?: string; // Track last automated interest posting
+  paymentMethod?: 'Cash' | 'Online' | 'Both';
+  cashAmount?: number;
+  onlineAmount?: number;
+  utrNumber?: string;
 }
 
 export interface Interaction {

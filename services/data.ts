@@ -309,7 +309,11 @@ export const createAccount = (
         guarantors?: Guarantor[],
         termMonths?: number,  // Added overrides
         interestRate?: number,
-        date?: string // Added for bulk import/custom opening dates
+        date?: string, // Added for bulk import/custom opening dates
+        paymentMethod?: string,
+        utrNumber?: string,
+        cashAmount?: number,
+        onlineAmount?: number
     },
     seriesNumber: number = 1,
     settings: AppSettings = DEFAULT_SETTINGS
@@ -411,7 +415,10 @@ export const createAccount = (
             description: type === AccountType.LOAN
                 ? `New ${loanType || 'Personal'} Loan`
                 : 'Initial Deposit / Disbursement',
-            paymentMethod: 'Cash'
+            paymentMethod: (extra?.paymentMethod as 'Cash' | 'Online' | 'Both') || 'Cash',
+            utrNumber: extra?.utrNumber,
+            cashAmount: extra?.cashAmount,
+            onlineAmount: extra?.onlineAmount
         }]
     };
 };

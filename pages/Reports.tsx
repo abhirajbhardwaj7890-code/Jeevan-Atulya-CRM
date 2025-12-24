@@ -354,6 +354,14 @@ const DayWiseCollectionModal: React.FC<DayWiseModalProps> = ({ onClose, accounts
             const member = members.find(m => m.id === acc.memberId);
             acc.transactions.forEach(tx => {
                 if (tx.date === selectedDate && tx.type === 'credit') {
+                    // Skip CD and SM opening balance transactions as they're included in registration amount
+                    const isOpeningBalance = tx.category === 'Opening Balance' || tx.description === 'Initial Deposit / Disbursement' || tx.description === 'Opening Balance';
+                    const isCDorSM = acc.type === AccountType.COMPULSORY_DEPOSIT || acc.type === AccountType.SHARE_CAPITAL;
+
+                    if (isOpeningBalance && isCDorSM) {
+                        return; // Skip this transaction
+                    }
+
                     const cash = tx.cashAmount || (tx.paymentMethod === 'Cash' ? tx.amount : 0);
                     const online = tx.onlineAmount || (tx.paymentMethod === 'Online' ? tx.amount : 0);
 

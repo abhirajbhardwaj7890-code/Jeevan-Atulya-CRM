@@ -390,19 +390,37 @@ const App: React.FC = () => {
             }
             let ledgerEntry: LedgerEntry | null = null;
             if (totalCollected > 0) {
-                ledgerEntry = {
-                    id: `LDG-REG-${Date.now()}`,
+                const admissionIncome = 950;
+                const depositInflow = totalCollected - admissionIncome;
+
+                // 1. Admission Fees (Income)
+                const incomeEntry: LedgerEntry = {
+                    id: `LDG-REG-INC-${Date.now()}`,
                     date: new Date().toISOString().split('T')[0],
-                    description: `New Registration - ${newMember.fullName}`,
-                    amount: totalCollected,
+                    description: `Registration Fee - ${newMember.fullName}`,
+                    amount: admissionIncome,
                     type: 'Income',
-                    category: 'Admission Fees & Deposits'
+                    category: 'Admission Fees'
                 };
-                await upsertLedgerEntry(ledgerEntry);
+                await upsertLedgerEntry(incomeEntry);
+                setLedger(prev => [incomeEntry, ...prev]);
+
+                // 2. Deposits Flow (CD/SM)
+                if (depositInflow > 0) {
+                    const depositEntry: LedgerEntry = {
+                        id: `LDG-REG-DEP-${Date.now()}`,
+                        date: new Date().toISOString().split('T')[0],
+                        description: `Initial Deposit (SM/CD) - ${newMember.fullName}`,
+                        amount: depositInflow,
+                        type: 'Income', // Recorded as Inflow
+                        category: 'Admission Fees & Deposits'
+                    };
+                    await upsertLedgerEntry(depositEntry);
+                    setLedger(prev => [depositEntry, ...prev]);
+                }
             }
             setMembers(prev => [newMember, ...prev]);
             setAccounts(prev => [...newAccounts, ...prev]);
-            if (ledgerEntry) setLedger(prev => [ledgerEntry!, ...prev]);
             if (shouldNavigate) setCurrentPage('members');
             return true;
         } catch (e) {
@@ -411,7 +429,7 @@ const App: React.FC = () => {
         }
     };
 
-    const handleAddAccount = async (memberId: string, accountData: Partial<Account> & { openingDate?: string }) => {
+    const handleAddAccount = async (memberId: string, accountData: Partial<Account>) => {
         if (!accountData.type) return;
 
         // Extract opening date (use accountData.openingDate or default to today)
@@ -424,7 +442,11 @@ const App: React.FC = () => {
             guarantors: accountData.guarantors,
             termMonths: accountData.termMonths,
             interestRate: accountData.interestRate,
-            date: openingDate // Pass opening date to createAccount
+            date: openingDate, // Pass opening date to createAccount
+            paymentMethod: accountData.paymentMethod,
+            utrNumber: accountData.utrNumber,
+            cashAmount: accountData.cashAmount,
+            onlineAmount: accountData.onlineAmount
         }, currentCount + 1, settings);
 
         if (accountData.maturityDate) newAccount.maturityDate = accountData.maturityDate;
@@ -447,10 +469,13 @@ const App: React.FC = () => {
             const ledgerEntry: LedgerEntry = {
                 id: `LDG-ACC-${Date.now()}`,
                 date: openingDate, // Use opening date for ledger entry
-                description: `New ${accountData.type} Opening - ${newAccount.accountNumber}`,
+                description: `New ${accountData.type} Opening - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`,
                 amount: accountData.balance || 0,
                 type: 'Income',
-                category: 'Member Deposits'
+                category: 'Member Deposits',
+                cashAmount: accountData.paymentMethod === 'Both' ? (accountData.cashAmount || 0) : (accountData.paymentMethod === 'Cash' ? (accountData.balance || 0) : 0),
+                onlineAmount: accountData.paymentMethod === 'Both' ? (accountData.onlineAmount || 0) : (accountData.paymentMethod === 'Online' ? (accountData.balance || 0) : 0),
+                utrNumber: accountData.utrNumber
             };
             setLedger(prev => [ledgerEntry, ...prev]);
             await upsertLedgerEntry(ledgerEntry);

@@ -163,7 +163,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         rdFrequency: 'Monthly',
         processingFeePercent: '1.0',
         purpose: '', // Personalization
-        openingDate: new Date().toISOString().split('T')[0] // Account opening date (YYYY-MM-DD)
+        openingDate: new Date().toISOString().split('T')[0], // Account opening date (YYYY-MM-DD)
+        paymentMethod: 'Cash' as 'Cash' | 'Online' | 'Both',
+        cashAmount: '',
+        onlineAmount: '',
+        utrNumber: ''
     });
 
     // Activate Member Modal State
@@ -507,7 +511,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         const dateStr = formatDate(new Date().toISOString());
         const amountInWords = numberToWords(acc.balance || 0);
-        
+
         // Calculate Age
         const birthDate = new Date(member.dateOfBirth || '');
         const age = member.dateOfBirth ? new Date().getFullYear() - birthDate.getFullYear() : '';
@@ -743,7 +747,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     <h1>JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</h1>
                     <p>E-287/8, PUL PEHLADPUR, DELHI-110044</p>
                 </div>
-                <div class="gray-bar"><span>REG.NO-10954</span><span style="border: 1px solid #000; padding: 2px 10px;">Cash</span></div>
+                <div class="gray-bar"><span>REG.NO-10954</span><span style="border: 1px solid #000; padding: 2px 10px;">${acc.transactions[0]?.paymentMethod || 'Cash'}</span></div>
                 <div class="info-section">
                     <div class="info-column">
                         <div class="info-row"><span class="label">Certificate No.</span><span class="value">: ${certNo}</span></div>
@@ -1574,7 +1578,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             initialAmount: openingBalance, // Original principal
             emi: calcResult?.emi,
             guarantors: finalGuarantors,
-            openingDate: accountForm.openingDate // Pass opening date
+            openingDate: accountForm.openingDate, // Pass opening date
+            paymentMethod: accountForm.paymentMethod,
+            cashAmount: accountForm.paymentMethod === 'Both' ? (parseFloat(accountForm.cashAmount) || 0) : undefined,
+            onlineAmount: accountForm.paymentMethod === 'Both' ? (parseFloat(accountForm.onlineAmount) || 0) : undefined,
+            utrNumber: accountForm.utrNumber
         };
 
         onAddAccount(member.id, newAccountData);
@@ -2469,6 +2477,77 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             />
                                             <p className="text-[10px] text-slate-500 mt-1">Format: DD/MM/YYYY • Minimum: 22/10/2025</p>
                                         </div>
+
+                                        <div className="border-t pt-4 mt-2">
+                                            <label className="block text-xs font-bold text-slate-500 mb-2">Payment Method</label>
+                                            <div className="flex gap-4 mb-4">
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="accPaymentMethod"
+                                                        checked={accountForm.paymentMethod === 'Cash'}
+                                                        onChange={() => setAccountForm({ ...accountForm, paymentMethod: 'Cash' })}
+                                                    />
+                                                    <span className="text-sm">Cash</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="accPaymentMethod"
+                                                        checked={accountForm.paymentMethod === 'Online'}
+                                                        onChange={() => setAccountForm({ ...accountForm, paymentMethod: 'Online' })}
+                                                    />
+                                                    <span className="text-sm">Online</span>
+                                                </label>
+                                                <label className="flex items-center gap-2 cursor-pointer">
+                                                    <input
+                                                        type="radio"
+                                                        name="accPaymentMethod"
+                                                        checked={accountForm.paymentMethod === 'Both'}
+                                                        onChange={() => setAccountForm({ ...accountForm, paymentMethod: 'Both' })}
+                                                    />
+                                                    <span className="text-sm">Both</span>
+                                                </label>
+                                            </div>
+
+                                            {(accountForm.paymentMethod === 'Online' || accountForm.paymentMethod === 'Both') && (
+                                                <div className="mb-4">
+                                                    <label className="block text-xs font-bold text-slate-500 mb-1">UTR / Transaction ID</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full border p-2 rounded-lg bg-white"
+                                                        placeholder="Enter UTR Number"
+                                                        value={accountForm.utrNumber}
+                                                        onChange={e => setAccountForm({ ...accountForm, utrNumber: e.target.value })}
+                                                    />
+                                                </div>
+                                            )}
+
+                                            {accountForm.paymentMethod === 'Both' && (
+                                                <div className="grid grid-cols-2 gap-4">
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 mb-1">Cash Amount</label>
+                                                        <input
+                                                            type="number"
+                                                            className="w-full border p-2 rounded-lg"
+                                                            placeholder="0"
+                                                            value={accountForm.cashAmount}
+                                                            onChange={e => setAccountForm({ ...accountForm, cashAmount: e.target.value })}
+                                                        />
+                                                    </div>
+                                                    <div>
+                                                        <label className="block text-xs font-bold text-slate-500 mb-1">Online Amount</label>
+                                                        <input
+                                                            type="number"
+                                                            className="w-full border p-2 rounded-lg"
+                                                            placeholder="0"
+                                                            value={accountForm.onlineAmount}
+                                                            onChange={e => setAccountForm({ ...accountForm, onlineAmount: e.target.value })}
+                                                        />
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
 
@@ -2957,6 +3036,21 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                         <span className="text-sm text-slate-600">Residence:</span>
                                         <label className="flex items-center gap-1 text-sm"><input type="radio" name="editResType" value="Owned" checked={editMemberForm.residenceType === 'Owned'} onChange={() => setEditMemberForm({ ...editMemberForm, residenceType: 'Owned' })} /> Owned</label>
                                         <label className="flex items-center gap-1 text-sm"><input type="radio" name="editResType" value="Rented" checked={editMemberForm.residenceType === 'Rented'} onChange={() => setEditMemberForm({ ...editMemberForm, residenceType: 'Rented' })} /> Rented</label>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-500 mb-1">Assigned Agent ID</label>
+                                        <input
+                                            className="w-full border p-2 rounded uppercase"
+                                            placeholder="Agent ID (e.g. AG-123)"
+                                            value={editMemberForm.agentId || ''}
+                                            onChange={e => setEditMemberForm({ ...editMemberForm, agentId: e.target.value })}
+                                        />
+                                        {editMemberForm.agentId && (
+                                            <p className="text-xs text-blue-600 mt-1">
+                                                {agents.find(a => a.id === editMemberForm.agentId || a.memberId === editMemberForm.agentId)?.name || 'Agent not found'}
+                                            </p>
+                                        )}
                                     </div>
 
                                     <select className="w-full border p-2 rounded" value={editMemberForm.status || 'Active'} onChange={e => setEditMemberForm({ ...editMemberForm, status: e.target.value as any })}>
