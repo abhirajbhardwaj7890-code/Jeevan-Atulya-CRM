@@ -502,6 +502,205 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         return words.trim();
     };
 
+    const handlePrintLoanApplication = (acc: Account) => {
+        if (acc.type !== AccountType.LOAN) return;
+
+        const dateStr = formatDate(new Date().toISOString());
+        const amountInWords = numberToWords(acc.balance || 0);
+        
+        // Calculate Age
+        const birthDate = new Date(member.dateOfBirth || '');
+        const age = member.dateOfBirth ? new Date().getFullYear() - birthDate.getFullYear() : '';
+
+        // Guarantors
+        const g1 = acc.guarantors && acc.guarantors[0] ? acc.guarantors[0] : { name: '', relation: '', phone: '' };
+        const g2 = acc.guarantors && acc.guarantors[1] ? acc.guarantors[1] : { name: '', relation: '', phone: '' };
+
+        const htmlContent = `
+            <html>
+            <head>
+                <title>Loan Application - ${acc.accountNumber}</title>
+                <style>
+                    @page { size: A4; margin: 10mm; }
+                    body { font-family: 'Times New Roman', serif; font-size: 13px; color: #000; line-height: 1.4; }
+                    .header { text-align: center; margin-bottom: 20px; position: relative; }
+                    .header h2 { margin: 0; text-decoration: underline; font-size: 18px; margin-bottom: 5px; font-weight: bold; }
+                    .header-box { border: 1px solid #000; padding: 2px 5px; display: inline-block; min-width: 80px; }
+                    .address-block { text-align: center; font-weight: bold; margin-bottom: 20px; font-size: 14px; }
+                    .row { display: flex; justify-content: space-between; margin-bottom: 8px; align-items: flex-end; }
+                    .field-label { display: inline-block; min-width: 120px; }
+                    .field-value { border-bottom: 1px dotted #000; padding: 0 5px; flex: 1; font-weight: bold; font-family: 'Courier New', monospace; min-height: 18px; }
+                    .section-title { text-align: center; font-weight: bold; margin: 15px 0 10px; font-size: 14px; text-transform: uppercase; }
+                    .declaration { text-align: justify; margin: 10px 0; font-size: 12px; }
+                    .declaration ul { list-style-type: none; padding-left: 20px; margin: 5px 0; }
+                    .sureties-table { width: 100%; border-collapse: separate; border-spacing: 0; margin-top: 10px; background: #ddd; padding: 2px; }
+                    .sureties-content { background: #fff; padding: 10px; display: flex; width: 100%; gap: 20px; }
+                    .surety-box { flex: 1; display: flex; flex-direction: column; gap: 8px; }
+                    .footer { position: fixed; bottom: 0; left: 0; right: 0; }
+                    .signature-row { display: flex; justify-content: space-between; margin-top: 30px; align-items: flex-end; }
+                    .signature-area { border-top: 1px solid #000; width: 220px; text-align: right; padding-top: 5px; font-size: 11px; margin-left: auto; }
+                    .big-text { font-size: 18px; font-weight: bold; }
+                    .w-label { width: 140px; font-size: 12px; }
+                    .logo-circle { width: 60px; height: 60px; border: 1px solid #ccc; border-radius: 50%; float: left; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #ccc; margin-right: 15px; }
+                </style>
+            </head>
+            <body>
+                <div style="font-size: 10px; font-weight: bold; margin-bottom: 5px;">Reg. No. : REG.NO-10954</div>
+                
+                <div class="header">
+                    <h2>EL / RL LOAN APPLICATION</h2>
+                    <div style="position: absolute; right: 0; top: 0; border: 1px solid #000; padding: 5px; text-align: left; width: 150px; font-size: 11px;">
+                        <div>Date : <span style="font-weight: bold;">${dateStr}</span></div>
+                        <div style="margin-top: 5px;">A/C No. <span style="font-weight: bold; font-size: 14px; margin-left: 5px;">${acc.accountNumber.split('-').pop()}</span></div>
+                    </div>
+                </div>
+
+                <div class="row" style="align-items: flex-start; margin-top: 30px;">
+                    <div style="width: 40px;">To,</div>
+                    <div style="flex:1;">
+                        <div style="font-weight: bold;">The Secretary / President</div>
+                        <div class="address-block" style="margin-top: 10px;">
+                            <div class="logo-circle">Atulya</div>
+                            <span class="big-text">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</span><br/>
+                            E-287/8, PUL PEHLADPUR, DELHI-110044
+                        </div>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 20px; font-size: 12px;">
+                    Dear Sir,
+                    <p style="text-indent: 40px; margin-top: 10px; line-height: 2;">
+                        Kindly grant me Emergency Loan Rs. <span style="border-bottom: 1px dotted #000; font-weight:bold; padding: 0 10px;">${formatCurrency(acc.balance || 0)}</span> Rupees <span style="border-bottom: 1px dotted #000; font-weight:bold; padding: 0 10px;">${amountInWords} Only</span>. Repaid Months <span style="border-bottom: 1px dotted #000; padding: 0 10px; font-weight: bold;">${acc.termMonths || '12'}</span>. Subject to the Rules and Byelaws of the Society and any subsequent modification thereto I agree to abide by them. My full particulars as under :-
+                    </p>
+                </div>
+
+                <div style="display: flex; flex-direction: column; gap: 5px; margin-bottom: 15px; border-top: 1px dotted #ccc; padding-top: 15px;">
+                    <div class="row">
+                        <span class="w-label">1. Member's Name</span>
+                        <span>:</span>
+                        <span class="field-value" style="font-size: 16px;">${member.fullName}</span>
+                        <div style="width: 200px; display:flex; justify-content: flex-end; gap: 5px; align-items: flex-end;">
+                            <span style="font-size: 11px;">PAN No. :</span>
+                            <span style="border-bottom: 1px dotted #000; width: 100px;"></span>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <span class="w-label">2. W/F/H / Name</span>
+                        <span>:</span>
+                        <span class="field-value">${member.fatherName || ''}</span>
+                        <div style="width: 250px; display:flex; justify-content: flex-end; gap: 5px; align-items: flex-end;">
+                            <span style="font-size: 11px;">Aadhaar No. :</span>
+                            <span style="border-bottom: 1px dotted #000; width: 120px; font-weight: bold;"></span>
+                        </div>
+                    </div>
+                    <div class="row">
+                        <span class="w-label">3. Date of Birth</span>
+                        <span>:</span>
+                        <span class="field-value" style="flex: 0 0 150px;">${member.dateOfBirth ? formatDate(member.dateOfBirth) : ''}</span>
+                        <span style="margin-left: 20px;">Age : <span style="border-bottom: 1px dotted #000; font-weight: bold; padding: 0 10px;">${age}</span></span>
+                        <span style="flex: 1; text-align: right;">Mobile No. : <span style="border-bottom: 1px dotted #000; font-weight: bold; padding: 0 10px;">${member.phone}</span></span>
+                    </div>
+                    <div class="row">
+                        <span class="w-label">4. Local Address</span>
+                        <span>:</span>
+                        <span class="field-value">${member.currentAddress || ''}</span>
+                    </div>
+                    <div class="row">
+                        <span class="w-label">5. Permanent Add</span>
+                        <span>:</span>
+                        <span class="field-value">${member.permanentAddress || member.currentAddress || ''}</span>
+                    </div>
+                    <div class="row">
+                        <span class="w-label">6. Cheque Numbers</span>
+                        <span>:</span>
+                        <span class="field-value"></span>
+                        <span style="margin-left: 10px; font-size: 11px;">Name of the Bank : </span>
+                        <span class="field-value"></span>
+                    </div>
+                </div>
+
+                <div style="border: 1px solid #000; padding: 10px; margin-top: 15px; font-size: 11px; background: #f9f9f9;">
+                    I hereby also agree, if the above Loan sanctioned, to deposit the following amounts with the society before receiving the Loan Amount: -
+                    <div style="margin-top: 5px; margin-left: 10px;">
+                        i.&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Share Money up to 10% of the Loan Amount.<br/>
+                        ii.&nbsp;&nbsp;&nbsp;&nbsp;C.D. @ 200 /- per month for Number of Monthly Installments of Loan & any arrears from month of membership to the month of Loan.
+                    </div>
+                </div>
+
+                <div class="declaration" style="font-style: italic;">
+                    I hereby nominate the following person to whom all money due to me by the Society or payable by me to the Society in the event to my death may be recovered as the case may be.
+                </div>
+
+                <div class="section-title">NOMINATION DETAILS</div>
+                
+                <div class="row">
+                    <span style="width: 120px;">Name of Nominee</span>
+                    <span>:</span>
+                    <span class="field-value">${member.nominee?.name || ''}</span>
+                    <span style="width: 60px; text-align: right;">Relation</span>
+                    <span>:</span>
+                    <span class="field-value" style="width: 100px; flex: none;">${member.nominee?.relation || ''}</span>
+                    <span style="width: 40px; text-align: right;">Age</span>
+                    <span>:</span>
+                    <span class="field-value" style="width: 50px; flex: none;"></span>
+                </div>
+                <div class="row">
+                    <span style="width: 120px;">Address</span>
+                    <span>:</span>
+                    <span class="field-value">${member.nominee?.address || ''}</span>
+                    <span style="flex: none; margin-left:10px;">Mobile No. :</span>
+                    <span class="field-value" style="width: 120px; flex: none;">${member.nominee?.phone || ''}</span>
+                </div>
+
+                <div style="background-color: #999; color: white; padding: 4px 10px; margin-top: 20px; font-weight: bold; font-size: 12px; text-align: center; text-transform: uppercase;">SURETIES DETAILS</div>
+                <div class="sureties-content" style="border: 1px solid #999; border-top: none;">
+                     <div class="surety-box">
+                        <div class="row"><span style="width: 60px;">Name &</span><span>:</span><span class="field-value">${g1.name}</span></div>
+                        <div class="row"><span style="width: 60px;">A/c No.</span><span>:</span><span class="field-value">${g1.memberId || ''}</span></div>
+                        <div style="margin-top: 25px; border-bottom: 1px solid #000; width: 100%;"></div>
+                        <div style="text-align: right; font-size: 10px; padding-right: 10px;">Signature</div>
+                    </div>
+                     <div style="width: 1px; background: #ccc;"></div>
+                     <div class="surety-box">
+                        <div class="row"><span style="width: 60px;">Name &</span><span>:</span><span class="field-value">${g2.name}</span></div>
+                        <div class="row"><span style="width: 60px;">A/c No.</span><span>:</span><span class="field-value">${g2.memberId || ''}</span></div>
+                        <div style="margin-top: 25px; border-bottom: 1px solid #000; width: 100%;"></div>
+                        <div style="text-align: right; font-size: 10px; padding-right: 10px;">Signature</div>
+                    </div>
+                </div>
+
+                <div style="text-align: right; margin-top: 15px;">
+                    <div class="signature-area">Signature of Applicant</div>
+                </div>
+
+                <div class="section-title" style="margin-top: 10px;">AFFIDAVIT</div>
+                <div class="declaration">
+                    I solemnly declate that I am neither a member of any other Co-operative Thrift & Credit Society operating or working in Delhi nor taken any kind of Loan which is outstanding as on date.
+                </div>
+                 <div class="declaration" style="margin-top: 5px;">
+                    The above declaration is true to the best of my knowledge and belief.
+                </div>
+
+                 <div style="text-align: right; margin-top: 20px;">
+                    <div class="signature-area">Signature of Applicant</div>
+                </div>
+
+                <div style="border: 1px solid #000; padding: 8px 15px; margin-top: 20px; display: flex; justify-content: space-between; align-items: flex-end;">
+                    <div>
+                        <div style="font-weight: bold; margin-bottom: 5px;">Member Applied for EL / RL Loan Rs. .....................................................</div>
+                        <div style="font-weight: bold;">Sanctioned as per Society Terms & Condition.</div>
+                    </div>
+                    <div style="text-align: center; width: 200px; border-top: 1px solid #000; padding-top: 5px; font-weight: bold;">
+                        President / Secretary
+                    </div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        printViaWindow(htmlContent);
+    };
+
     const handlePrintFDCertificate = (acc: Account) => {
         if (acc.type !== AccountType.FIXED_DEPOSIT) return;
 
@@ -1730,6 +1929,14 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                     className="bg-emerald-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm hover:bg-emerald-700"
                                                 >
                                                     <Printer size={12} /> Print Certificate
+                                                </button>
+                                            )}
+                                            {acc.type === AccountType.LOAN && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handlePrintLoanApplication(acc); }}
+                                                    className="bg-amber-600 text-white text-[10px] font-bold px-3 py-1.5 rounded-full flex items-center gap-1 shadow-sm hover:bg-amber-700"
+                                                >
+                                                    <FileText size={12} /> Print Application
                                                 </button>
                                             )}
                                             <div className="bg-blue-600 text-white text-[10px] font-bold px-2 py-1 rounded-full flex items-center gap-1 shadow-sm">

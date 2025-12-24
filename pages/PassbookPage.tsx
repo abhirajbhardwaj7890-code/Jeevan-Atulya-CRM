@@ -40,40 +40,41 @@ const abbreviateParticulars = (text: string) => {
 
 // Default PRT template for Cover Page
 const DEFAULT_PRT_TEMPLATE = `. 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
+ 
                               Member Personal Details                               
                             ============================                     
- Account No.       : $ACNO,5
+ Account No.       :   $ACNO,5
  Name              :   $ACNAME,40
  F/H/D Of Name     :   $FATHER,40
  Address           :   $ACADD1,100
@@ -342,9 +343,13 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
 
         if (printTab === 'cover') {
             const parsedContent = parsePrtTemplate(customPrtTemplate);
+            // Apply Top Offset (convert lines to px, approx 22px per line)
+            const dynamicTopPadding = `calc(${printConfig.topMargin}mm + ${printLineOffset * printConfig.rowHeight}px)`;
+            const coverMarginStyle = `padding-top: ${dynamicTopPadding}; padding-left: ${printConfig.leftMargin}mm;`;
+
             content = `
           <html><head><style>@page { margin: 0; } body { margin: 0; padding: 0; color: #000000; }</style></head>
-          <body style="font-family: 'Courier New', monospace; font-size: 14px; white-space: pre; margin: 0; ${marginStyle}; color: #000000;">${parsedContent}</body></html>
+          <body style="font-family: 'Courier New', monospace; font-size: 14px; white-space: pre; margin: 0; ${coverMarginStyle}; color: #000000;">${parsedContent}</body></html>
         `;
         } else {
             // Build Print Rows based on selection and spacing
@@ -406,7 +411,7 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
           <html>
             <head>
                <style>
-                 @page { margin: 0; size: auto; }
+                 @page { size: auto; margin: 0; }
                  body { ${marginStyle}; font-family: 'Courier New', monospace; font-size: 10px; margin: 0; font-weight: bold; color: #000000; }
                  table { width: 100%; border-collapse: collapse; table-layout: fixed; color: #000000; }
                  th, td { padding: 0px 2px; vertical-align: top; overflow: hidden; height: ${printConfig.rowHeight}px; box-sizing: border-box; white-space: nowrap; border-color: #000000; }
@@ -418,22 +423,22 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                  .dashed-top { border-top: 1px dashed #000000; }
                  
                  /* Specific font sizes */
-                 .txt { font-size: 14px; }
-                 .num { font-size: 16px; }
+                 .txt { font-size: 12px; }
+                 .num { font-size: 13px; }
                </style>
             </head>
             <body>
                <table>
                   <colgroup>
-                    <col style="width: 75px;"> <!-- Date -->
-                    <col style="width: 90px;"> <!-- Particulars (Reduced) -->
+                    <col style="width: 70px;"> <!-- Date -->
+                    <col style="width: 80px;"> <!-- Particulars (Reduced) -->
                     
-                    <!-- Increased width for numbers (42,42,50) -->
-                    <col style="width: 42px;"><col style="width: 42px;"><col style="width: 50px;"> <!-- SM -->
-                    <col style="width: 42px;"><col style="width: 42px;"><col style="width: 50px;"> <!-- CD -->
-                    <col style="width: 42px;"><col style="width: 42px;"><col style="width: 50px;"> <!-- OD -->
-                    <col style="width: 42px;"><col style="width: 42px;"><col style="width: 50px;"> <!-- RD -->
-                    <col style="width: 42px;"><col style="width: 42px;"><col style="width: 50px;"> <!-- RL -->
+                    <!-- Adjusted width for Portrait (38,38,45) -->
+                    <col style="width: 38px;"><col style="width: 38px;"><col style="width: 45px;"> <!-- SM -->
+                    <col style="width: 38px;"><col style="width: 38px;"><col style="width: 45px;"> <!-- CD -->
+                    <col style="width: 38px;"><col style="width: 38px;"><col style="width: 45px;"> <!-- OD -->
+                    <col style="width: 38px;"><col style="width: 38px;"><col style="width: 45px;"> <!-- RD -->
+                    <col style="width: 38px;"><col style="width: 38px;"><col style="width: 45px;"> <!-- RL -->
                   </colgroup>
                   ${printHeaders ? tableHead : ''}
                   <tbody>
@@ -612,14 +617,32 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                             </div>
                         </>
                     ) : (
-                        <div className="space-y-3">
-                            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Variables</h3>
-                            <div className="bg-white rounded-lg border border-slate-200 text-xs">
-                                {['$ACNO', '$ACNAME', '$FATHER', '$ACADD1', '$ACCITY', '$ACPIN1', '$MOBILENO', '$MEMDATE'].map(v => (
-                                    <div key={v} className="p-2 border-b border-slate-100 last:border-0 font-mono text-slate-600">
-                                        {v}
-                                    </div>
-                                ))}
+                        <div className="space-y-6">
+                            <div className="space-y-3">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Alignment</h3>
+                                <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                    <label className="flex justify-between text-xs font-medium text-slate-700 mb-2">
+                                        Top Offset (Lines) <span className="bg-slate-100 px-1.5 rounded">{printLineOffset}</span>
+                                    </label>
+                                    <input
+                                        type="range" min="0" max="30"
+                                        className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-slate-600"
+                                        value={printLineOffset}
+                                        onChange={(e) => setPrintLineOffset(parseInt(e.target.value))}
+                                    />
+                                    <p className="text-[10px] text-slate-400 mt-2">Adjust this to move the specific printing down.</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wide">Variables</h3>
+                                <div className="bg-white rounded-lg border border-slate-200 text-xs">
+                                    {['$ACNO', '$ACNAME', '$FATHER', '$ACADD1', '$ACCITY', '$ACPIN1', '$MOBILENO', '$MEMDATE'].map(v => (
+                                        <div key={v} className="p-2 border-b border-slate-100 last:border-0 font-mono text-slate-600">
+                                            {v}
+                                        </div>
+                                    ))}
+                                </div>
                             </div>
                         </div>
                     )}
@@ -703,8 +726,15 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
                             <textarea
                                 className="w-full h-[600px] font-mono text-sm p-8 border border-slate-300 shadow-sm focus:ring-2 focus:ring-blue-500 outline-none resize-none"
                                 value={customPrtTemplate}
+
                                 onChange={(e) => setCustomPrtTemplate(e.target.value)}
                             />
+                            {/* Preview Overlay for Cover Offset */}
+                            {printLineOffset > 0 && (
+                                <div style={{ height: printLineOffset * 22 }} className="w-full bg-yellow-50 border-b border-dashed border-yellow-300 mt-4 flex items-center justify-center text-yellow-600 font-bold text-sm">
+                                    + {printLineOffset} Lines Top Padding
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
