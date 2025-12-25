@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents } from '../services/data';
 import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
-import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X, MessageSquare, Smartphone, Play } from 'lucide-react';
-import { MessagingService } from '../services/messaging';
+import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X, Search, Wrench, MessageSquare, Smartphone } from 'lucide-react';
 import { parseSafeDate, formatDate } from '../services/utils';
 import * as XLSX from 'xlsx';
 
@@ -621,6 +620,140 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         document.body.removeChild(link);
     };
 
+    // --- Data Recovery Logic ---
+    const extractDateFromId = (id: string): string | null => {
+        // Regex to find 13-digit timestamp (e.g. -1735123456789-)
+        const match = id.match(/-(\d{13})-/);
+        // Fallback: Check if ID ends with timestamp (less common but possible)
+        const matchEnd = id.match(/-(\d{13})$/);
+
+        const timestampStr = match ? match[1] : (matchEnd ? matchEnd[1] : null);
+
+        if (timestampStr) {
+            const timestamp = parseInt(timestampStr, 10);
+            if (!isNaN(timestamp) && timestamp > 1600000000000) { // Basic sanity check (post-2020)
+                return new Date(timestamp).toISOString().split('T')[0];
+            }
+        }
+        return null;
+    };
+
+    const [recoveryLogs, setRecoveryLogs] = useState<string[]>([]);
+    const [proposedFixes, setProposedFixes] = useState<{ id: string, type: string, name: string, oldDate: string, newDate: string }[]>([]);
+
+    const analyzeCorruption = () => {
+        const logs: string[] = [];
+        const fixes: { id: string, type: string, name: string, oldDate: string, newDate: string }[] = [];
+
+        logs.push("Starting analysis...");
+
+        // 1. Analyze Accounts
+        accounts.forEach(acc => {
+            const idDate = extractDateFromId(acc.id);
+            if (idDate && idDate !== acc.openingDate) {
+                // Corruption Indicator: Opening Date matches a recent reset or Member Join Date
+                // But strictly, we just want to restore to the Creation Date (ID timestamp)
+                // if the current date is WRONG.
+                // Given the user report, let's assume ALL mismatches where ID date < Opening Date are suspicious,
+                // OR simply suggest restoring ALL valid ID dates.
+
+                // Let's suggest fixing ANY mismatch, but highlight it
+                fixes.push({
+                    id: acc.id,
+                    type: 'Account',
+                    name: `${acc.accountNumber} (${acc.type})`,
+                    oldDate: acc.openingDate || 'None',
+                    newDate: idDate
+                });
+            }
+        });
+
+        // 2. Analyze Transactions (Opening Balance)
+        // We only care about ensuring the Opening Balance transaction matches the Account Opening Date
+        accounts.forEach(acc => {
+            const openingTx = acc.transactions.find(t => t.category === 'Opening Balance' || t.description.includes('Opening'));
+            if (openingTx) {
+                const idDate = extractDateFromId(openingTx.id);
+                if (idDate && idDate !== openingTx.date) {
+                    fixes.push({
+                        id: openingTx.id, // We need to handle this carefully as we need Account ID to save
+                        type: `Transaction (${acc.accountNumber})`,
+                        name: openingTx.description,
+                        oldDate: openingTx.date,
+                        newDate: idDate
+                    });
+                }
+            }
+        });
+
+        setProposedFixes(fixes);
+        setRecoveryLogs([...logs, `Analysis complete. Found ${fixes.length} potential fixes.`]);
+    };
+
+    const applyFix = async () => {
+        if (proposedFixes.length === 0) return;
+        setIsRepairing(true);
+        setRecoveryLogs(prev => [...prev, "Applying fixes..."]);
+
+        try {
+            const accountsToUpdate: Account[] = [];
+            const txsToUpdate: { transaction: Transaction, accountId: string }[] = [];
+
+            // Map for quick lookup
+            const accountMap = new Map(accounts.map(a => [a.id, a]));
+
+            for (const fix of proposedFixes) {
+                if (fix.type === 'Account') {
+                    const acc = accountMap.get(fix.id);
+                    if (acc) {
+                        const updatedAcc = { ...acc, openingDate: fix.newDate };
+                        accountsToUpdate.push(updatedAcc);
+                        accountMap.set(fix.id, updatedAcc); // Update map for subsequent lookups
+                    }
+                } else if (fix.type.startsWith('Transaction')) {
+                    // Find account for this transaction
+                    // The 'id' in fix is the Transaction ID. We need to find which account it belongs to.
+                    // This is inefficient O(N*M) but fine for client-side repair script
+                    let foundParams: { acc: Account, tx: Transaction } | null = null;
+
+                    for (const checkAcc of accounts) { // Use original accounts list
+                        const tx = checkAcc.transactions.find(t => t.id === fix.id);
+                        if (tx) {
+                            foundParams = { acc: checkAcc, tx };
+                            break;
+                        }
+                    }
+
+                    if (foundParams) {
+                        const { acc, tx } = foundParams;
+                        const updatedTx = { ...tx, date: fix.newDate };
+                        txsToUpdate.push({ transaction: updatedTx, accountId: acc.id });
+                    }
+                }
+            }
+
+            // Deduplicate Accounts (in case multiple fixes target same account, though unlikely for openingDate)
+            const uniqueAccounts = Array.from(new Map(accountsToUpdate.map(a => [a.id, a])).values());
+            // Deduplicate Transactions
+            const uniqueTxs = Array.from(new Map(txsToUpdate.map(t => [t.transaction.id, t])).values());
+
+            if (uniqueAccounts.length > 0) await bulkUpsertAccounts(uniqueAccounts);
+            if (uniqueTxs.length > 0) await bulkUpsertTransactions(uniqueTxs);
+
+            setRecoveryLogs(prev => [...prev, "Fixes applied successfully. Please refresh the page."]);
+            alert("Data Recovery Complete. Please refresh the page to see changes.");
+            if (onImportSuccess) onImportSuccess();
+
+        } catch (e: any) {
+            console.error(e);
+            setRecoveryLogs(prev => [...prev, `Error: ${e.message}`]);
+            alert("Recovery Failed. Check console.");
+        } finally {
+            setIsRepairing(false);
+            setProposedFixes([]);
+        }
+    };
+
     return (
         <div className="animate-fade-in max-w-5xl pb-10">
             <div className="mb-6 flex justify-between items-center">
@@ -704,6 +837,37 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             <MessageSquare className="text-blue-600" size={20} />
                             Messaging Integration (Android Gateway)
                         </h3>
+
+                        {/* Mixed Content Warning */}
+                        {typeof window !== 'undefined' && window.location.protocol === 'https:' && form.messaging?.url && !form.messaging.url.includes('/proxy/') && form.messaging.url.startsWith('http:') && (
+                            <div className="mb-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
+                                <div className="flex items-start gap-3">
+                                    <AlertTriangle className="text-red-600 shrink-0 mt-0.5" size={20} />
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-red-900 text-sm mb-1">⚠️ Mixed Content Detected!</h4>
+                                        <p className="text-xs text-red-700 mb-2">
+                                            Your CRM is running on <strong>HTTPS</strong> but your gateway URL is <strong>HTTP</strong>.
+                                            The browser will block this request for security reasons.
+                                        </p>
+                                        <div className="bg-red-100 p-2 rounded text-xs text-red-800">
+                                            <strong>Solution:</strong> Use the proxy server. Change your URL to:<br />
+                                            <code className="bg-red-200 px-1 rounded mt-1 inline-block">
+                                                http://localhost:3001/proxy/send?target={form.messaging.url}
+                                            </code>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Proxy Status Indicator */}
+                        {form.messaging?.url && form.messaging.url.includes('/proxy/') && (
+                            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
+                                <CheckCircle className="text-green-600" size={16} />
+                                <span className="text-xs text-green-800 font-medium">✓ Using Proxy Server (Mixed Content Safe)</span>
+                            </div>
+                        )}
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
@@ -742,18 +906,46 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 <option value="SMSGate">SMSGate Local API (POST)</option>
                                             </select>
                                         </div>
+
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-600 mb-1">Gateway URL</label>
+                                            <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center justify-between">
+                                                <span>Gateway URL</span>
+                                                {form.messaging?.url && !form.messaging.url.includes('/proxy/') && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            const currentUrl = form.messaging?.url || '';
+                                                            const proxyUrl = form.messaging?.provider === 'AndroidGateway'
+                                                                ? `http://localhost:3001/proxy/send?target=${currentUrl}`
+                                                                : `http://localhost:3001/proxy/message?target=${currentUrl}`;
+                                                            setForm({
+                                                                ...form,
+                                                                messaging: { ...form.messaging!, url: proxyUrl }
+                                                            });
+                                                        }}
+                                                        className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded hover:bg-blue-200"
+                                                    >
+                                                        🔄 Convert to Proxy URL
+                                                    </button>
+                                                )}
+                                            </label>
                                             <input
                                                 type="text"
-                                                placeholder={form.messaging?.provider === 'SMSGate' ? 'http://192.168.1.3:8080/v1/message' : 'http://192.168.1.5:8080/send'}
-                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                placeholder={
+                                                    form.messaging?.provider === 'SMSGate'
+                                                        ? 'http://localhost:3001/proxy/message?target=http://192.168.1.3:8080/v1/message'
+                                                        : 'http://localhost:3001/proxy/send?target=http://192.168.1.5:8080/send'
+                                                }
+                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm font-mono"
                                                 value={form.messaging?.url || ''}
                                                 onChange={(e) => setForm({
                                                     ...form,
                                                     messaging: { ...form.messaging!, url: e.target.value }
                                                 })}
                                             />
+                                            <p className="text-[10px] text-slate-500 mt-1">
+                                                💡 For HTTPS sites, use proxy URL format shown in placeholder
+                                            </p>
                                         </div>
 
                                         {form.messaging?.provider === 'AndroidGateway' && (
@@ -804,6 +996,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                             <label className="block text-xs font-medium text-slate-600 mb-1">Office Phone Number (Sender/Test)</label>
                                             <input
                                                 type="text"
+                                                placeholder="9876543210"
                                                 className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
                                                 value={form.messaging?.officePhoneNumber || ''}
                                                 onChange={(e) => setForm({
@@ -819,18 +1012,28 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             <div className="space-y-4">
                                 <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg">
                                     <h4 className="text-xs font-bold text-amber-800 uppercase mb-2 flex items-center gap-1">
-                                        <Info size={14} /> Usage Note
+                                        <Info size={14} /> Setup Instructions
                                     </h4>
-                                    <p className="text-xs text-amber-700 leading-relaxed">
-                                        1. This uses your <strong>Android Phone</strong> as a gateway.<br />
-                                        2. Ensure the phone is connected to the same WiFi or has a public IP.<br />
-                                        3. Keep the Gateway App running on the phone.<br />
-                                        4. No additional per-message cost (uses your SIM plan).
-                                    </p>
+                                    <div className="text-xs text-amber-700 leading-relaxed space-y-2">
+                                        <div>
+                                            <strong>Step 1:</strong> Install proxy dependencies<br />
+                                            <code className="bg-amber-100 px-1 rounded text-[10px]">npm install express http-proxy-middleware cors</code>
+                                        </div>
+                                        <div>
+                                            <strong>Step 2:</strong> Start proxy server<br />
+                                            <code className="bg-amber-100 px-1 rounded text-[10px]">node proxy-server.js</code>
+                                        </div>
+                                        <div>
+                                            <strong>Step 3:</strong> Use proxy URL format above
+                                        </div>
+                                        <div className="pt-2 border-t border-amber-200">
+                                            📖 See <code className="bg-amber-100 px-1 rounded">QUICK_START_PROXY.md</code> for full guide
+                                        </div>
+                                    </div>
                                 </div>
 
-                                <div className="p-4 border border-slate-200 rounded-lg flex flex-col items-center justify-center gap-3">
-                                    <p className="text-xs text-slate-500 font-medium">Test Connection</p>
+                                <div className="p-4 border border-slate-200 rounded-lg">
+                                    <p className="text-xs text-slate-500 font-medium mb-3 text-center">Test Connection</p>
                                     <button
                                         onClick={async () => {
                                             const m = form.messaging;
@@ -847,14 +1050,77 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 return;
                                             }
 
+                                            // Check for Mixed Content issue
+                                            if (typeof window !== 'undefined' && window.location.protocol === 'https:' && m.url.startsWith('http:') && !m.url.includes('/proxy/')) {
+                                                const useProxy = confirm(
+                                                    "⚠️ MIXED CONTENT DETECTED!\n\n" +
+                                                    "Your CRM is on HTTPS but gateway is HTTP.\n" +
+                                                    "The browser will block this request.\n\n" +
+                                                    "Would you like to automatically convert to proxy URL?\n\n" +
+                                                    "(Make sure proxy server is running: node proxy-server.js)"
+                                                );
+                                                if (useProxy) {
+                                                    const proxyUrl = m.provider === 'AndroidGateway'
+                                                        ? `http://localhost:3001/proxy/send?target=${m.url}`
+                                                        : `http://localhost:3001/proxy/message?target=${m.url}`;
+                                                    setForm({
+                                                        ...form,
+                                                        messaging: { ...m, url: proxyUrl }
+                                                    });
+                                                    alert("URL converted to proxy format. Please click 'Send Test Message' again.");
+                                                    return;
+                                                }
+                                            }
+
+                                            console.log("🚀 Sending test message...");
                                             const success = await MessagingService.sendMessage(form, m.officePhoneNumber, MessagingService.formatTestMessage());
-                                            if (success) alert("Test message sent! Check your phone.");
-                                            else alert("Failed to send test message. Check configuration and network.");
+
+                                            if (success) {
+                                                alert("✅ Test message sent successfully! Check your phone.");
+                                            } else {
+                                                const isUsingProxy = m.url.includes('/proxy/');
+                                                let errorMsg = "❌ Failed to send test message.\n\n";
+
+                                                if (!isUsingProxy && typeof window !== 'undefined' && window.location.protocol === 'https:') {
+                                                    errorMsg += "🔒 LIKELY CAUSE: Mixed Content Error\n" +
+                                                        "Your CRM is HTTPS but gateway is HTTP.\n\n" +
+                                                        "SOLUTION:\n" +
+                                                        "1. Start proxy: node proxy-server.js\n" +
+                                                        "2. Click 'Convert to Proxy URL' button above\n" +
+                                                        "3. Try again\n\n";
+                                                } else if (isUsingProxy) {
+                                                    errorMsg += "🔌 PROXY MODE ACTIVE\n\n" +
+                                                        "Troubleshooting:\n" +
+                                                        "1. Is proxy running? Check: http://localhost:3001/health\n" +
+                                                        "2. Is your Android gateway reachable?\n" +
+                                                        "3. Check browser console (F12) for details\n\n";
+                                                } else {
+                                                    errorMsg += "Troubleshooting:\n" +
+                                                        "1. Check Browser Console (F12) for errors\n" +
+                                                        "2. Verify gateway URL is correct\n" +
+                                                        "3. Ensure Android app is running\n" +
+                                                        "4. Check network connectivity\n\n";
+                                                }
+
+                                                errorMsg += "📖 See QUICK_START_PROXY.md for detailed help";
+                                                alert(errorMsg);
+                                            }
                                         }}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors"
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm"
                                     >
                                         <Play size={16} /> Send Test Message
                                     </button>
+
+                                    {form.messaging?.url && form.messaging.url.includes('/proxy/') && (
+                                        <a
+                                            href="http://localhost:3001/health"
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+                                        >
+                                            🔍 Check Proxy Status
+                                        </a>
+                                    )}
                                 </div>
                             </div>
                         </div>
@@ -1152,6 +1418,105 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
             {activeTab === 'maintenance' && (
                 <div className="animate-fade-in space-y-6">
+
+                    {/* Setup Status */}
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                            System Health
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                <span className="text-sm text-slate-500">Total Members</span>
+                                <p className="text-2xl font-bold text-slate-900">{members.length}</p>
+                            </div>
+                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                <span className="text-sm text-slate-500">Total Accounts</span>
+                                <p className="text-2xl font-bold text-slate-900">{accounts.length}</p>
+                            </div>
+                            <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                <span className="text-sm text-slate-500">Total Ledger Entries</span>
+                                <p className="text-2xl font-bold text-slate-900">{ledger.length}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Data Recovery Section */}
+                    <div className="bg-white rounded-xl border border-red-100 shadow-sm p-6 ring-2 ring-red-50">
+                        <div className="flex items-start gap-4 mb-4">
+                            <div className="p-3 bg-red-100 rounded-full text-red-600">
+                                <AlertTriangle size={24} />
+                            </div>
+                            <div>
+                                <h3 className="font-bold text-slate-900 text-lg">Data Recovery: Fix Date Corruption</h3>
+                                <p className="text-slate-600 text-sm mt-1">
+                                    Use this tool if account dates were accidentally reset. It extracts the original creation timestamp from the unique System ID.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4 font-mono text-xs h-40 overflow-y-auto">
+                            {recoveryLogs.length === 0 ? <span className="text-slate-400">No logs yet. Click Analyze to start.</span> : recoveryLogs.map((log, i) => (
+                                <div key={i} className="mb-1 text-slate-700">{log}</div>
+                            ))}
+                        </div>
+
+                        {proposedFixes.length > 0 && (
+                            <div className="mb-4">
+                                <h4 className="font-bold text-sm text-slate-700 mb-2">Proposed Fixes ({proposedFixes.length})</h4>
+                                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                                    <table className="w-full text-left text-sm">
+                                        <thead className="bg-slate-100">
+                                            <tr>
+                                                <th className="p-2 border-b">Type</th>
+                                                <th className="p-2 border-b">Name</th>
+                                                <th className="p-2 border-b">Current Date</th>
+                                                <th className="p-2 border-b">Recovered Date (From ID)</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="divide-y divide-slate-100 bg-white">
+                                            {proposedFixes.slice(0, 10).map((fix) => (
+                                                <tr key={fix.id}>
+                                                    <td className="p-2">{fix.type}</td>
+                                                    <td className="p-2">{fix.name}</td>
+                                                    <td className="p-2 text-red-600">{fix.oldDate}</td>
+                                                    <td className="p-2 text-green-600 font-medium">{fix.newDate}</td>
+                                                </tr>
+                                            ))}
+                                            {proposedFixes.length > 10 && (
+                                                <tr>
+                                                    <td colSpan={4} className="p-2 text-center text-slate-500 italic">
+                                                        ...and {proposedFixes.length - 10} more
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="flex gap-3">
+                            <button
+                                onClick={analyzeCorruption}
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
+                                disabled={isRepairing}
+                            >
+                                <Search size={18} /> Analyze Data Health
+                            </button>
+
+                            {proposedFixes.length > 0 && (
+                                <button
+                                    onClick={applyFix}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium flex items-center gap-2"
+                                    disabled={isRepairing}
+                                >
+                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <Wrench size={18} />}
+                                    Fix {proposedFixes.length} Issues
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
                     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                         <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
                             <Database size={20} className="text-blue-600" />

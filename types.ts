@@ -48,15 +48,6 @@ export interface AppSettings {
       emergency: number;
     }
   };
-  messaging?: {
-    enabled: boolean;
-    provider: 'AndroidGateway' | 'SMSGate' | 'None';
-    url: string;
-    apiKey: string;
-    username?: string;
-    password?: string;
-    officePhoneNumber: string;
-  };
 }
 
 export interface Branch {

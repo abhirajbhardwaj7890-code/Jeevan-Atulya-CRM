@@ -3008,10 +3008,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold text-slate-500">Date of Birth</label>
                                         <input type="date" className="w-full border p-2 rounded" value={editMemberForm.dateOfBirth || ''} onChange={e => setEditMemberForm({ ...editMemberForm, dateOfBirth: e.target.value })} />
+                                        <p className="text-[10px] text-slate-500 mt-1">Format: DD/MM/YYYY</p>
                                     </div>
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold text-slate-500">Joined Date</label>
                                         <input type="date" className="w-full border p-2 rounded" value={editMemberForm.joinDate || ''} onChange={e => setEditMemberForm({ ...editMemberForm, joinDate: e.target.value })} />
+                                        <p className="text-[10px] text-slate-500 mt-1">Format: DD/MM/YYYY</p>
                                     </div>
                                     <div className="space-y-2">
                                         <label className="block text-xs font-bold text-slate-500">Current / Residence Address</label>
@@ -3078,6 +3080,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                     <div className="space-y-1">
                                         <label className="block text-xs font-bold text-slate-500">Date of Birth</label>
                                         <input className="w-full border p-2 rounded" type="date" value={editNomineeForm.dateOfBirth || ''} onChange={e => setEditNomineeForm({ ...editNomineeForm, dateOfBirth: e.target.value })} />
+                                        <p className="text-[10px] text-slate-500">Format: DD/MM/YYYY</p>
                                     </div>
                                     <input className="w-full border p-2 rounded" placeholder="Nominee Phone" value={editNomineeForm.phone || ''} onChange={e => setEditNomineeForm({ ...editNomineeForm, phone: e.target.value })} />
                                     <textarea className="w-full border p-2 rounded" placeholder="Nominee Address" value={editNomineeForm.address || ''} onChange={e => setEditNomineeForm({ ...editNomineeForm, address: e.target.value })} />
