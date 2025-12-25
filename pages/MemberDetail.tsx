@@ -1433,61 +1433,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     };
 
     // --- Automated Interest Posting ---
-    useEffect(() => {
-        if (!interestChecked && accounts.length > 0) {
-            const today = new Date();
-            accounts.forEach(acc => {
-                const startDateStr = acc.lastInterestPostDate || acc.openingDate || acc.createdAt || member.joinDate;
-                let startDate = new Date(startDateStr);
-
-                while (true) {
-                    const nextMonth = new Date(startDate);
-                    nextMonth.setMonth(nextMonth.getMonth() + 1);
-                    if (nextMonth > today) break;
-
-                    let interest = 0;
-                    let description = '';
-                    const rate = acc.interestRate || 0;
-                    const isLoan = acc.type === AccountType.LOAN;
-
-                    if (isLoan) {
-                        if (acc.loanType === LoanType.EMERGENCY) {
-                            const principal = acc.initialAmount || acc.originalAmount || 0;
-                            interest = principal * (rate / 100) / 12;
-                            description = `Monthly Interest (Flat Rate ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
-                        } else {
-                            interest = acc.balance * (rate / 100) / 12;
-                            description = `Monthly Interest (Reducing ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
-                        }
-                    } else if (acc.type !== AccountType.SHARE_CAPITAL) {
-                        interest = acc.balance * (rate / 100) / 12;
-                        description = `Monthly Interest (Compounding ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
-                    }
-
-                    if (interest > 0) {
-                        const postDate = nextMonth.toISOString().split('T')[0];
-                        const newTx: Transaction = {
-                            id: `TX-INT-AUTO-${acc.id}-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                            amount: Math.round(interest),
-                            type: isLoan ? 'debit' : 'credit',
-                            category: 'Interest',
-                            description: description,
-                            date: postDate,
-                            paymentMethod: 'Cash'
-                        };
-
-                        onAddTransaction(acc.id, newTx);
-                        if (!isLoan) acc.balance += Math.round(interest);
-                        onUpdateAccount({ ...acc, lastInterestPostDate: postDate });
-                        startDate = nextMonth;
-                    } else {
-                        break;
-                    }
-                }
-            });
-            setInterestChecked(true);
-        }
-    }, [interestChecked, accounts, member.joinDate, onAddTransaction, onUpdateAccount]);
+    // --- Automated Interest Posting (DISABLED) ---
+    // useEffect(() => {
+    //     // Logic removed as per user request to stop auto-interest transactions
+    // }, []);
 
     // --- Account Wizard Logic ---
     const handleNextStep = () => {

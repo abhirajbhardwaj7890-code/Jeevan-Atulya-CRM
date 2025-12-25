@@ -32,6 +32,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const [importLogs, setImportLogs] = useState<{ name: string, error: string }[]>([]);
     const [successCount, setSuccessCount] = useState(0);
     const [isRepairing, setIsRepairing] = useState(false);
+    const [proposedFixes, setProposedFixes] = useState<any[]>([]);
+    const [recoveryLogs, setRecoveryLogs] = useState<string[]>([]);
 
     // --- Configuration Logic ---
     const handleSave = async () => {
@@ -639,119 +641,174 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         return null;
     };
 
-    const [recoveryLogs, setRecoveryLogs] = useState<string[]>([]);
-    const [proposedFixes, setProposedFixes] = useState<{ id: string, type: string, name: string, oldDate: string, newDate: string }[]>([]);
-
     const analyzeCorruption = () => {
+        setIsRepairing(true);
+        setRecoveryLogs([]);
+        setProposedFixes([]);
+        const fixes: any[] = [];
         const logs: string[] = [];
-        const fixes: { id: string, type: string, name: string, oldDate: string, newDate: string }[] = [];
 
-        logs.push("Starting analysis...");
-
-        // 1. Analyze Accounts
-        accounts.forEach(acc => {
-            const idDate = extractDateFromId(acc.id);
-            if (idDate && idDate !== acc.openingDate) {
-                // Corruption Indicator: Opening Date matches a recent reset or Member Join Date
-                // But strictly, we just want to restore to the Creation Date (ID timestamp)
-                // if the current date is WRONG.
-                // Given the user report, let's assume ALL mismatches where ID date < Opening Date are suspicious,
-                // OR simply suggest restoring ALL valid ID dates.
-
-                // Let's suggest fixing ANY mismatch, but highlight it
-                fixes.push({
-                    id: acc.id,
-                    type: 'Account',
-                    name: `${acc.accountNumber} (${acc.type})`,
-                    oldDate: acc.openingDate || 'None',
-                    newDate: idDate
-                });
+        // Check Members
+        members.forEach(m => {
+            const extracted = extractDateFromId(m.id);
+            if (extracted && extracted !== m.joinDate) {
+                // Heuristic: If joinDate is today/recent but ID is old
+                const joinTime = new Date(m.joinDate).getTime();
+                const extractTime = new Date(extracted).getTime();
+                if (Math.abs(joinTime - extractTime) > 86400000 * 30) { // > 30 days diff
+                    fixes.push({
+                        id: m.id, type: 'Member', name: m.fullName, oldDate: m.joinDate, newDate: extracted, entity: m
+                    });
+                    logs.push(`Found corruption in Member ${m.fullName}: ${m.joinDate} -> ${extracted}`);
+                }
             }
         });
 
-        // 2. Analyze Transactions (Opening Balance)
-        // We only care about ensuring the Opening Balance transaction matches the Account Opening Date
-        accounts.forEach(acc => {
-            const openingTx = acc.transactions.find(t => t.category === 'Opening Balance' || t.description.includes('Opening'));
-            if (openingTx) {
-                const idDate = extractDateFromId(openingTx.id);
-                if (idDate && idDate !== openingTx.date) {
+        // Check Accounts
+        accounts.forEach(a => {
+            const extracted = extractDateFromId(a.id);
+            if (extracted && extracted !== a.openingDate) {
+                const openTime = new Date(a.openingDate).getTime();
+                const extractTime = new Date(extracted).getTime();
+                if (Math.abs(openTime - extractTime) > 86400000 * 30) {
                     fixes.push({
-                        id: openingTx.id, // We need to handle this carefully as we need Account ID to save
-                        type: `Transaction (${acc.accountNumber})`,
-                        name: openingTx.description,
-                        oldDate: openingTx.date,
-                        newDate: idDate
+                        id: a.id, type: 'Account', name: `${a.type} (${a.accountNumber})`, oldDate: a.openingDate, newDate: extracted, entity: a
+                    });
+                    logs.push(`Found corruption in Account ${a.accountNumber}: ${a.openingDate} -> ${extracted}`);
+                }
+            }
+        });
+
+        setRecoveryLogs(logs);
+        setProposedFixes(fixes);
+        setIsRepairing(false);
+        if (fixes.length === 0) alert("No corruption found based on ID timestamps.");
+    };
+
+    const applyManualFixes = async () => {
+        if (!confirm(`Apply ${proposedFixes.length} date fixes?`)) return;
+        setIsRepairing(true);
+        try {
+            const mems = proposedFixes.filter(f => f.type === 'Member').map(f => ({ ...f.entity, joinDate: f.newDate }));
+            const accs = proposedFixes.filter(f => f.type === 'Account').map(f => ({ ...f.entity, openingDate: f.newDate }));
+
+            if (mems.length > 0) await bulkUpsertMembers(mems);
+            if (accs.length > 0) await bulkUpsertAccounts(accs);
+
+            alert("Fixes applied successfully!");
+            setProposedFixes([]);
+            if (onImportSuccess) onImportSuccess();
+        } catch (e: any) {
+            console.error(e);
+            alert("Failed to apply fixes: " + e.message);
+        } finally {
+            setIsRepairing(false);
+        }
+    };
+
+    // --- Auto-Interest Cleanup Logic ---
+    const [interestCleanupCount, setInterestCleanupCount] = useState<number | null>(null);
+
+    const analyzeAutoInterest = () => {
+        let count = 0;
+        accounts.forEach(acc => {
+            count += acc.transactions.filter(t => t.id && t.id.startsWith('TX-INT-AUTO-')).length;
+        });
+        setInterestCleanupCount(count);
+    };
+
+    const purgeAutoInterest = async () => {
+        if (!interestCleanupCount || interestCleanupCount === 0) return;
+        if (!confirm(`Are you sure you want to delete ${interestCleanupCount} auto-generated interest transactions? This cannot be undone.`)) return;
+
+        setIsRepairing(true);
+        try {
+            const accountsToUpdate: Account[] = [];
+
+            for (const acc of accounts) {
+                const originalLen = acc.transactions.length;
+                // Filter out auto-interest transactions
+                const cleanTransactions = acc.transactions.filter(t => !t.id.startsWith('TX-INT-AUTO-'));
+
+                if (cleanTransactions.length !== originalLen) {
+                    // Recalculate balance if needed? 
+                    // Warning: Removing Interest Credit reduces balance. Removing Interest Debit (Loan) might not affect balance depending on logic, 
+                    // but usually Loan Interest is a Debit increasing the outstanding balance?
+                    // In our logic: Loan Interest (Debit) -> Balance remains (it's principal?), wait. 
+                    // Savings Interest (Credit) -> Balance += Interest. So we must SUBTRACT it back.
+
+                    let balanceAdjustment = 0;
+                    const removedTxs = acc.transactions.filter(t => t.id.startsWith('TX-INT-AUTO-'));
+                    removedTxs.forEach(t => {
+                        if (t.type === 'credit') balanceAdjustment -= t.amount;
+                        if (t.type === 'debit') balanceAdjustment += t.amount; // Should decrease loan balance? 
+                        // Wait, for Loan: Debit = Income for Bank? No, Debit increases Member Debt.
+                        // If we remove an Interest Debit, the Member Debt should Decrease.
+                        // So Balance (Debt) should be reduced by the interest amount.
+                        // But wait, our Loan logic: Debit = Increase Balance (Debt).
+                        // So: Balance -= Amount (to remove the increase).
+                        // Correct.
+                        // For Savings: Credit = Increase Balance (Asset).
+                        // So: Balance -= Amount (to remove the increase).
+                        // BOTH reduce the balance number?
+                        // Let's check:
+                        // Savings: Balance 1000 + 10 Interest = 1010. Remove 10 -> 1000. (Subtract positive amount)
+                        // Loan: Balance 50000 + 500 Interest = 50500. Remove 500 -> 50000. (Subtract positive amount)
+                        // YES. In both cases, we reverse the ADDITION operation by SUBTRACTING the amount.
+
+                        balanceAdjustment -= t.amount;
+                    });
+
+                    // Wait, if Loan Debit was `balance += amount`, then removing it means `balance -= amount`.
+                    // If Savings Credit was `balance += amount`, then removing it means `balance -= amount`.
+                    // So simply: NewBalance = OldBalance - Sum(RemovedAmounts) ? 
+
+                    // Let's be precise.
+                    // Savings Credit: Balance went UP. We want it DOWN. -> Subtract.
+                    // Loan Debit: Balance went UP (Debt). We want it DOWN. -> Subtract.
+                    // Yes.
+
+                    // Wait, verify Loan logic. 
+                    // Line 506 App.tsx: `newBalance = account.balance + txAmount;` (for Debit on Loan).
+                    // So yes, removing it requires SUBTRACTING.
+
+                    // Re-calculate balance from scratch to be safe?
+                    // No, that's expensive. Using delta is better.
+                    // Delta = -Sum(RemovedTxs.amount)
+
+                    const newBalance = acc.balance - removedTxs.reduce((sum, t) => sum + t.amount, 0);
+
+                    accountsToUpdate.push({
+                        ...acc,
+                        balance: newBalance,
+                        transactions: cleanTransactions
                     });
                 }
             }
-        });
 
-        setProposedFixes(fixes);
-        setRecoveryLogs([...logs, `Analysis complete. Found ${fixes.length} potential fixes.`]);
-    };
+            if (accountsToUpdate.length > 0) {
+                await bulkUpsertAccounts(accountsToUpdate);
+                // We ideally should delete transactions from DB too if using Supabase, 
+                // but bulkUpsertAccounts usually upserts. It doesn't DELETE removed children transactions strictly speaking if relational.
+                // However, since we store transactions as JSONB in this architecture (likely, given the code structure saw earlier where transactions are part of Account object),
+                // updating the Account record with the new transactions array is sufficient.
+                // If utilizing a separate transactions table:
+                // The `upsertAccount` logic in `data.ts` seems to handle account object.
+                // Let's assume JSON storage for now or that the user handles strict DB sync.
 
-    const applyFix = async () => {
-        if (proposedFixes.length === 0) return;
-        setIsRepairing(true);
-        setRecoveryLogs(prev => [...prev, "Applying fixes..."]);
-
-        try {
-            const accountsToUpdate: Account[] = [];
-            const txsToUpdate: { transaction: Transaction, accountId: string }[] = [];
-
-            // Map for quick lookup
-            const accountMap = new Map(accounts.map(a => [a.id, a]));
-
-            for (const fix of proposedFixes) {
-                if (fix.type === 'Account') {
-                    const acc = accountMap.get(fix.id);
-                    if (acc) {
-                        const updatedAcc = { ...acc, openingDate: fix.newDate };
-                        accountsToUpdate.push(updatedAcc);
-                        accountMap.set(fix.id, updatedAcc); // Update map for subsequent lookups
-                    }
-                } else if (fix.type.startsWith('Transaction')) {
-                    // Find account for this transaction
-                    // The 'id' in fix is the Transaction ID. We need to find which account it belongs to.
-                    // This is inefficient O(N*M) but fine for client-side repair script
-                    let foundParams: { acc: Account, tx: Transaction } | null = null;
-
-                    for (const checkAcc of accounts) { // Use original accounts list
-                        const tx = checkAcc.transactions.find(t => t.id === fix.id);
-                        if (tx) {
-                            foundParams = { acc: checkAcc, tx };
-                            break;
-                        }
-                    }
-
-                    if (foundParams) {
-                        const { acc, tx } = foundParams;
-                        const updatedTx = { ...tx, date: fix.newDate };
-                        txsToUpdate.push({ transaction: updatedTx, accountId: acc.id });
-                    }
-                }
+                // If separate table, we'd need `deleteTransaction(ids)`.
+                // `data.ts` has `upsertTransaction`.
+                // Let's stick to updating the Account which contains the Valid Source of Truth for the UI.
             }
 
-            // Deduplicate Accounts (in case multiple fixes target same account, though unlikely for openingDate)
-            const uniqueAccounts = Array.from(new Map(accountsToUpdate.map(a => [a.id, a])).values());
-            // Deduplicate Transactions
-            const uniqueTxs = Array.from(new Map(txsToUpdate.map(t => [t.transaction.id, t])).values());
-
-            if (uniqueAccounts.length > 0) await bulkUpsertAccounts(uniqueAccounts);
-            if (uniqueTxs.length > 0) await bulkUpsertTransactions(uniqueTxs);
-
-            setRecoveryLogs(prev => [...prev, "Fixes applied successfully. Please refresh the page."]);
-            alert("Data Recovery Complete. Please refresh the page to see changes.");
-            if (onImportSuccess) onImportSuccess();
-
+            alert(`Successfully purged ${interestCleanupCount} transactions.`);
+            setInterestCleanupCount(0);
+            window.location.reload();
         } catch (e: any) {
             console.error(e);
-            setRecoveryLogs(prev => [...prev, `Error: ${e.message}`]);
-            alert("Recovery Failed. Check console.");
+            alert("Cleanup failed: " + e.message);
         } finally {
             setIsRepairing(false);
-            setProposedFixes([]);
         }
     };
 
@@ -1447,281 +1504,60 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             <div className="p-3 bg-red-100 rounded-full text-red-600">
                                 <AlertTriangle size={24} />
                             </div>
-                            <div>
-                                <h3 className="font-bold text-slate-900 text-lg">Data Recovery: Fix Date Corruption</h3>
-                                <p className="text-slate-600 text-sm mt-1">
-                                    Use this tool if account dates were accidentally reset. It extracts the original creation timestamp from the unique System ID.
+                            <div className="flex-1">
+                                <h4 className="font-bold text-slate-900 text-lg">Manual Resurrection</h4>
+                                <p className="text-slate-500 text-xs mb-4">
+                                    Use this tool to manually correct account dates corrupted by the system reset.
                                 </p>
-                            </div>
-                        </div>
-
-                        <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-4 font-mono text-xs h-40 overflow-y-auto">
-                            {recoveryLogs.length === 0 ? <span className="text-slate-400">No logs yet. Click Analyze to start.</span> : recoveryLogs.map((log, i) => (
-                                <div key={i} className="mb-1 text-slate-700">{log}</div>
-                            ))}
-                        </div>
-
-                        {proposedFixes.length > 0 && (
-                            <div className="mb-4">
-                                <h4 className="font-bold text-sm text-slate-700 mb-2">Proposed Fixes ({proposedFixes.length})</h4>
-                                <div className="border border-slate-200 rounded-lg overflow-hidden">
-                                    <table className="w-full text-left text-sm">
-                                        <thead className="bg-slate-100">
-                                            <tr>
-                                                <th className="p-2 border-b">Type</th>
-                                                <th className="p-2 border-b">Name</th>
-                                                <th className="p-2 border-b">Current Date</th>
-                                                <th className="p-2 border-b">Recovered Date (From ID)</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-slate-100 bg-white">
-                                            {proposedFixes.slice(0, 10).map((fix) => (
-                                                <tr key={fix.id}>
-                                                    <td className="p-2">{fix.type}</td>
-                                                    <td className="p-2">{fix.name}</td>
-                                                    <td className="p-2 text-red-600">{fix.oldDate}</td>
-                                                    <td className="p-2 text-green-600 font-medium">{fix.newDate}</td>
-                                                </tr>
-                                            ))}
-                                            {proposedFixes.length > 10 && (
-                                                <tr>
-                                                    <td colSpan={4} className="p-2 text-center text-slate-500 italic">
-                                                        ...and {proposedFixes.length - 10} more
-                                                    </td>
-                                                </tr>
-                                            )}
-                                        </tbody>
-                                    </table>
+                                <div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-4">
+                                    <h5 className="font-bold text-red-800 text-sm mb-2 flex items-center gap-2"><Search size={14} /> Step 1: Analyze & Identify</h5>
+                                    <p className="text-xs text-red-800/70 mb-3">Scan all accounts for suspicious date patterns (Opening Date matches Join Date or System Reset Date).</p>
+                                    <button onClick={analyzeCorruption} disabled={isRepairing} className="px-4 py-2 bg-white border border-red-200 text-red-700 font-bold rounded-lg text-xs hover:bg-red-50 disabled:opacity-50">
+                                        {isRepairing ? <Loader className="animate-spin" size={14} /> : 'Scan for Corruption'}
+                                    </button>
                                 </div>
+                                {proposedFixes.length > 0 && (
+                                    <ManualRescueUI fixes={proposedFixes} onApply={applyManualFixes} />
+                                )}
                             </div>
-                        )}
-
-                        <div className="flex gap-3">
-                            <button
-                                onClick={analyzeCorruption}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium flex items-center gap-2"
-                                disabled={isRepairing}
-                            >
-                                <Search size={18} /> Analyze Data Health
-                            </button>
-
-                            {proposedFixes.length > 0 && (
-                                <button
-                                    onClick={applyFix}
-                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium flex items-center gap-2"
-                                    disabled={isRepairing}
-                                >
-                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <Wrench size={18} />}
-                                    Fix {proposedFixes.length} Issues
-                                </button>
-                            )}
                         </div>
                     </div>
 
-                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                        <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
-                            <Database size={20} className="text-blue-600" />
-                            Data Integrity Utilities
-                        </h3>
-                        <div className="space-y-4">
-                            <div className="p-4 bg-blue-50 border border-blue-100 rounded-xl flex items-center justify-between">
-                                <div>
-                                    <h4 className="font-bold text-blue-900">Repair Missing Transactions</h4>
-                                    <p className="text-sm text-blue-700 max-w-md">
-                                        Identifies accounts that have a balance but are missing their initial "Opening Balance" transaction.
-                                        This utility will backfill these transactions using the account's opening date.
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={async () => {
-                                        if (!confirm("This will scan all accounts and create missing opening transactions. Continue?")) return;
-                                        setIsRepairing(true);
-                                        try {
-                                            const missingTxs: { transaction: Transaction, accountId: string }[] = [];
-                                            accounts.forEach(acc => {
-                                                // Check for accounts with balance but no transactions
-                                                if (acc.balance > 0 && (!acc.transactions || acc.transactions.length === 0)) {
-                                                    // Find the member for this account to get joinDate fallback
-                                                    const member = members.find(m => m.id === acc.memberId);
-                                                    const fallbackDate = member?.joinDate || new Date().toISOString().split('T')[0];
-
-                                                    const tx: Transaction = {
-                                                        id: `TX-OPENING-${acc.id}`,
-                                                        date: acc.openingDate || acc.createdAt || fallbackDate,
-                                                        amount: acc.balance,
-                                                        type: acc.type === AccountType.LOAN ? 'debit' : 'credit',
-                                                        category: acc.type === AccountType.LOAN ? 'Loan Disbursement' : 'Opening Balance',
-                                                        description: 'Repaired Opening Balance Transaction',
-                                                        paymentMethod: 'Cash'
-                                                    };
-                                                    missingTxs.push({ transaction: tx, accountId: acc.id });
-                                                }
-                                            });
-
-                                            if (missingTxs.length === 0) {
-                                                alert("No accounts found with missing transactions.");
-                                                return;
-                                            }
-
-                                            if (confirm(`Found ${missingTxs.length} accounts missing transactions. Repair now?`)) {
-                                                await bulkUpsertTransactions(missingTxs);
-                                                alert(`Successfully repaired ${missingTxs.length} transactions!`);
-                                                if (onImportSuccess) onImportSuccess(); // Refresh data
-                                            }
-                                        } catch (err: any) {
-                                            console.error(err);
-                                            alert("Repair failed: " + err.message);
-                                        } finally {
-                                            setIsRepairing(false);
-                                        }
-                                    }}
-                                    disabled={isRepairing}
-                                    className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm"
-                                >
-                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                                    Run Repair
-                                </button>
+                    {/* Auto-Interest Cleanup Section */}
+                    <div className="bg-white rounded-xl border border-amber-100 shadow-sm p-6 ring-2 ring-amber-50">
+                        <div className="flex items-start gap-4">
+                            <div className="p-3 bg-amber-100 rounded-full text-amber-600">
+                                <Trash2 size={24} />
                             </div>
+                            <div>
+                                <h4 className="font-bold text-slate-900 text-lg">Cleanup Auto-Interest</h4>
+                                <p className="text-slate-500 text-xs mb-4">
+                                    Mass delete all automatically generated interest transactions (tagged 'TX-INT-AUTO').
+                                </p>
 
-                            <div className="p-4 bg-amber-50 border border-amber-100 rounded-xl flex items-center justify-between">
-                                <div>
-                                    <h4 className="font-bold text-amber-900">Backfill Registration Fees</h4>
-                                    <p className="text-sm text-amber-700 max-w-md">
-                                        Identifies members who are missing the registration fee (Income portion ₹950) in the society ledger.
-                                        This utility will create missing Income entries for these members.
-                                    </p>
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        onClick={analyzeAutoInterest}
+                                        className="px-4 py-2 bg-amber-50 border border-amber-200 text-amber-800 font-bold rounded-lg text-xs hover:bg-amber-100"
+                                    >
+                                        Scan for Auto-Interest
+                                    </button>
+
+                                    {interestCleanupCount !== null && (
+                                        <div className="flex items-center gap-4 animate-fade-in">
+                                            <span className="text-sm font-bold text-slate-700">Found: {interestCleanupCount} transactions</span>
+                                            {interestCleanupCount > 0 && (
+                                                <button
+                                                    onClick={purgeAutoInterest}
+                                                    disabled={isRepairing}
+                                                    className="px-4 py-2 bg-red-600 text-white font-bold rounded-lg text-xs hover:bg-red-700 disabled:opacity-50"
+                                                >
+                                                    {isRepairing ? 'Deleting...' : 'Delete All'}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
                                 </div>
-                                <button
-                                    onClick={async () => {
-                                        if (!confirm("This will scan all members and add missing ₹950 registration fee income entries. Continue?")) return;
-                                        setIsRepairing(true);
-                                        try {
-                                            const missingLedger: LedgerEntry[] = [];
-                                            members.forEach(m => {
-                                                const regId = `LDG-REG-${m.id}`;
-                                                const exists = ledger.some(l => l.id === regId || (l.description.includes("Reg") && l.description.includes(m.fullName)));
-
-                                                if (!exists) {
-                                                    missingLedger.push({
-                                                        id: regId,
-                                                        date: m.joinDate || new Date().toISOString().split('T')[0],
-                                                        description: `Bulk Reg Fee - ${m.fullName}`,
-                                                        amount: 950,
-                                                        type: 'Income',
-                                                        category: 'Admission Fees & Deposits'
-                                                    });
-                                                }
-                                            });
-
-                                            if (missingLedger.length === 0) {
-                                                alert("No members found with missing registration fees.");
-                                                return;
-                                            }
-
-                                            if (confirm(`Found ${missingLedger.length} members missing registration fees. Backfill ₹950 each now?`)) {
-                                                await bulkUpsertLedgerEntries(missingLedger);
-                                                alert(`Successfully backfilled ${missingLedger.length} registration fee income entries!`);
-                                                if (onImportSuccess) onImportSuccess(); // Refresh data
-                                            }
-                                        } catch (err: any) {
-                                            console.error(err);
-                                            alert("Backfill failed: " + err.message);
-                                        } finally {
-                                            setIsRepairing(false);
-                                        }
-                                    }}
-                                    disabled={isRepairing}
-                                    className="px-6 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm"
-                                >
-                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <Database size={18} />}
-                                    Backfill Fees
-                                </button>
-                            </div>
-
-                            <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
-                                <div>
-                                    <h4 className="font-bold text-emerald-900">Correct "Ruined" Opening Dates</h4>
-                                    <p className="text-sm text-emerald-700 max-w-md">
-                                        Scan and correct dates for opening transactions created by the repair utility to match the member's join date.
-                                    </p>
-                                </div>
-                                <button
-                                    onClick={async () => {
-                                        if (!confirm("This will scan for transactions with ID 'TX-OPENING-*' and fix their dates if they don't match the member join date. Continue?")) return;
-                                        setIsRepairing(true);
-                                        try {
-
-
-                                            const fixTxs: { transaction: Transaction, accountId: string }[] = [];
-                                            const fixAccs: Account[] = [];
-
-                                            accounts.forEach(acc => {
-                                                let openingTx = (acc.transactions || []).find(t => t.id === `TX-OPENING-${acc.id}`);
-                                                if (!openingTx) {
-                                                    openingTx = (acc.transactions || [])
-                                                        .filter(t => t.category === 'Opening Balance' || t.description?.includes('Initial Deposit') || t.category === 'Loan Disbursement')
-                                                        .sort((a, b) => a.date.localeCompare(b.date))[0];
-                                                }
-
-                                                if (openingTx) {
-                                                    const member = members.find(m => m.id === acc.memberId);
-
-                                                    // Normalize dates to ISO for comparison
-                                                    const currentTxDateISO = parseSafeDate(openingTx.date);
-                                                    const accountOpeningDateISO = parseSafeDate(acc.openingDate);
-                                                    const memberJoinDateISO = parseSafeDate(member?.joinDate);
-                                                    const accountCreatedAtISO = parseSafeDate(acc.createdAt);
-                                                    const todayISO = new Date().toISOString().split('T')[0];
-
-                                                    // Calculate the "Correct" ISO Date
-                                                    // Rule: If account date is today, use member join date
-                                                    let correctDateISO = accountOpeningDateISO;
-                                                    if (accountOpeningDateISO === todayISO && memberJoinDateISO !== todayISO) {
-                                                        correctDateISO = memberJoinDateISO;
-                                                    } else if (!acc.openingDate) {
-                                                        correctDateISO = memberJoinDateISO || accountCreatedAtISO;
-                                                    }
-
-                                                    // Apply fix if mismatch found
-                                                    if (currentTxDateISO !== correctDateISO) {
-                                                        console.log(`Fixing transaction ${openingTx.id}: ${openingTx.date} (${currentTxDateISO}) -> ${correctDateISO}`);
-                                                        fixTxs.push({
-                                                            transaction: { ...openingTx, date: correctDateISO },
-                                                            accountId: acc.id
-                                                        });
-                                                    }
-
-                                                    if (accountOpeningDateISO !== correctDateISO) {
-                                                        console.log(`Fixing account ${acc.accountNumber} opening date: ${acc.openingDate} (${accountOpeningDateISO}) -> ${correctDateISO}`);
-                                                        fixAccs.push({ ...acc, openingDate: correctDateISO });
-                                                    }
-                                                }
-                                            });
-
-                                            if (fixTxs.length === 0 && fixAccs.length === 0) {
-                                                alert("No mismatched opening transactions or accounts found.");
-                                                return;
-                                            }
-
-                                            if (confirm(`Found ${fixTxs.length} mismatched transactions and ${fixAccs.length} accounts to correct. Fix them now?`)) {
-                                                if (fixTxs.length > 0) await bulkUpsertTransactions(fixTxs);
-                                                if (fixAccs.length > 0) await bulkUpsertAccounts(fixAccs);
-                                                alert(`Successfully corrected ${fixTxs.length} transactions and ${fixAccs.length} accounts!`);
-                                                if (onImportSuccess) onImportSuccess(); // Refresh data
-                                            }
-                                        } catch (err: any) {
-                                            console.error(err);
-                                            alert("Fix failed: " + err.message);
-                                        } finally {
-                                            setIsRepairing(false);
-                                        }
-                                    }}
-                                    disabled={isRepairing}
-                                    className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm"
-                                >
-                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <CheckCircle size={18} />}
-                                    Fix Dates
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -1730,3 +1566,44 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         </div>
     );
 };
+
+const ManualRescueUI = ({ fixes, onApply }: { fixes: any[], onApply: () => void }) => (
+    <div className="mb-4 animate-fade-in">
+        <h4 className="font-bold text-sm text-slate-700 mb-2">Proposed Fixes ({fixes.length})</h4>
+        <div className="border border-slate-200 rounded-lg overflow-hidden mb-3">
+            <table className="w-full text-left text-sm">
+                <thead className="bg-slate-100">
+                    <tr>
+                        <th className="p-2 border-b">Type</th>
+                        <th className="p-2 border-b">Name</th>
+                        <th className="p-2 border-b">Current Date</th>
+                        <th className="p-2 border-b">Recovered Date</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                    {fixes.slice(0, 10).map((fix) => (
+                        <tr key={fix.id}>
+                            <td className="p-2">{fix.type}</td>
+                            <td className="p-2">{fix.name}</td>
+                            <td className="p-2 text-red-600">{fix.oldDate}</td>
+                            <td className="p-2 text-green-600 font-medium">{fix.newDate}</td>
+                        </tr>
+                    ))}
+                    {fixes.length > 10 && (
+                        <tr>
+                            <td colSpan={4} className="p-2 text-center text-slate-500 italic">
+                                ...and {fixes.length - 10} more
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+        <button
+            onClick={onApply}
+            className="w-full py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold flex items-center justify-center gap-2"
+        >
+            <Wrench size={16} /> Apply {fixes.length} Fixes
+        </button>
+    </div>
+);
