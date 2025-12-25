@@ -646,6 +646,26 @@ export const bulkUpsertTransactions = async (txs: { transaction: Transaction, ac
     if (error) throw error;
 };
 
+export const bulkDeleteTransactions = async (ids: string[]) => {
+    if (ids.length === 0) return;
+
+    if (!isSupabaseConfigured()) {
+        console.log("[Volatile] Deleting transactions", ids.length);
+        const cache = getMemoryCache();
+        cache.accounts.forEach((acc: Account) => {
+            acc.transactions = acc.transactions.filter((t: Transaction) => !ids.includes(t.id));
+        });
+        return;
+    }
+
+    const supabase = getSupabaseClient();
+    const { error } = await supabase.from('transactions').delete().in('id', ids);
+    if (error) {
+        console.error("[PERSISTENCE] Supabase Transaction Deletion Error:", error.message);
+        throw error;
+    }
+};
+
 export const upsertBranch = async (branch: Branch) => {
     if (!isSupabaseConfigured()) {
         const cache = getMemoryCache();

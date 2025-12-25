@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents } from '../services/data';
+import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents, bulkDeleteTransactions } from '../services/data';
 import { MessagingService } from '../services/messaging';
 import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X, Search, Wrench, MessageSquare, Smartphone, Play } from 'lucide-react';
@@ -727,6 +727,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         setIsRepairing(true);
         try {
             const accountsToUpdate: Account[] = [];
+            const idsToDelete: string[] = [];
 
             for (const acc of accounts) {
                 const originalLen = acc.transactions.length;
@@ -737,55 +738,22 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 );
 
                 if (cleanTransactions.length !== originalLen) {
-                    // Recalculate balance if needed? 
-                    // Warning: Removing Interest Credit reduces balance. Removing Interest Debit (Loan) might not affect balance depending on logic, 
-                    // but usually Loan Interest is a Debit increasing the outstanding balance?
-                    // In our logic: Loan Interest (Debit) -> Balance remains (it's principal?), wait. 
-                    // Savings Interest (Credit) -> Balance += Interest. So we must SUBTRACT it back.
-
-                    let balanceAdjustment = 0;
                     const removedTxs = acc.transactions.filter(t =>
                         (t.id && t.id.startsWith('TX-INT-AUTO-')) ||
                         (t.description && t.description.includes('Monthly Interest (Compounding)'))
                     );
-                    removedTxs.forEach(t => {
-                        if (t.type === 'credit') balanceAdjustment -= t.amount;
-                        if (t.type === 'debit') balanceAdjustment += t.amount; // Should decrease loan balance? 
-                        // Wait, for Loan: Debit = Income for Bank? No, Debit increases Member Debt.
-                        // If we remove an Interest Debit, the Member Debt should Decrease.
-                        // So Balance (Debt) should be reduced by the interest amount.
-                        // But wait, our Loan logic: Debit = Increase Balance (Debt).
-                        // So: Balance -= Amount (to remove the increase).
-                        // Correct.
-                        // For Savings: Credit = Increase Balance (Asset).
-                        // So: Balance -= Amount (to remove the increase).
-                        // BOTH reduce the balance number?
-                        // Let's check:
-                        // Savings: Balance 1000 + 10 Interest = 1010. Remove 10 -> 1000. (Subtract positive amount)
-                        // Loan: Balance 50000 + 500 Interest = 50500. Remove 500 -> 50000. (Subtract positive amount)
-                        // YES. In both cases, we reverse the ADDITION operation by SUBTRACTING the amount.
 
-                        balanceAdjustment -= t.amount;
+                    // Collect IDs for permanent deletion
+                    removedTxs.forEach(t => {
+                        if (t.id) idsToDelete.push(t.id);
                     });
 
-                    // Wait, if Loan Debit was `balance += amount`, then removing it means `balance -= amount`.
-                    // If Savings Credit was `balance += amount`, then removing it means `balance -= amount`.
-                    // So simply: NewBalance = OldBalance - Sum(RemovedAmounts) ? 
-
-                    // Let's be precise.
-                    // Savings Credit: Balance went UP. We want it DOWN. -> Subtract.
-                    // Loan Debit: Balance went UP (Debt). We want it DOWN. -> Subtract.
-                    // Yes.
-
-                    // Wait, verify Loan logic. 
-                    // Line 506 App.tsx: `newBalance = account.balance + txAmount;` (for Debit on Loan).
-                    // So yes, removing it requires SUBTRACTING.
-
-                    // Re-calculate balance from scratch to be safe?
-                    // No, that's expensive. Using delta is better.
-                    // Delta = -Sum(RemovedTxs.amount)
-
-                    const newBalance = acc.balance - removedTxs.reduce((sum, t) => sum + t.amount, 0);
+                    // Recalculate balance
+                    // In our system: 
+                    // Savings: Credit (Interest) increases balance -> Subtraction reverses it.
+                    // Loans: Debit (Interest) increases balance (debt) -> Subtraction reverses it.
+                    const removedAmount = removedTxs.reduce((sum, t) => sum + t.amount, 0);
+                    const newBalance = acc.balance - removedAmount;
 
                     accountsToUpdate.push({
                         ...acc,
@@ -795,19 +763,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                 }
             }
 
+            if (idsToDelete.length > 0) {
+                await bulkDeleteTransactions(idsToDelete);
+            }
+
             if (accountsToUpdate.length > 0) {
                 await bulkUpsertAccounts(accountsToUpdate);
-                // We ideally should delete transactions from DB too if using Supabase, 
-                // but bulkUpsertAccounts usually upserts. It doesn't DELETE removed children transactions strictly speaking if relational.
-                // However, since we store transactions as JSONB in this architecture (likely, given the code structure saw earlier where transactions are part of Account object),
-                // updating the Account record with the new transactions array is sufficient.
-                // If utilizing a separate transactions table:
-                // The `upsertAccount` logic in `data.ts` seems to handle account object.
-                // Let's assume JSON storage for now or that the user handles strict DB sync.
-
-                // If separate table, we'd need `deleteTransaction(ids)`.
-                // `data.ts` has `upsertTransaction`.
-                // Let's stick to updating the Account which contains the Valid Source of Truth for the UI.
             }
 
             alert(`Successfully purged ${interestCleanupCount} transactions.`);
