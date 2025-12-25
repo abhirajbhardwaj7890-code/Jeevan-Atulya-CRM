@@ -1212,6 +1212,59 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                     Backfill Fees
                                 </button>
                             </div>
+
+                            <div className="p-4 bg-emerald-50 border border-emerald-100 rounded-xl flex items-center justify-between">
+                                <div>
+                                    <h4 className="font-bold text-emerald-900">Correct "Ruined" Opening Dates</h4>
+                                    <p className="text-sm text-emerald-700 max-w-md">
+                                        Scan and correct dates for opening transactions created by the repair utility to match the member's join date.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        if (!confirm("This will scan for transactions with ID 'TX-OPENING-*' and fix their dates if they don't match the member join date. Continue?")) return;
+                                        setIsRepairing(true);
+                                        try {
+                                            const fixTxs: { transaction: Transaction, accountId: string }[] = [];
+                                            accounts.forEach(acc => {
+                                                const openingTx = (acc.transactions || []).find(t => t.id === `TX-OPENING-${acc.id}`);
+                                                if (openingTx) {
+                                                    const member = members.find(m => m.id === acc.memberId);
+                                                    const correctDate = acc.openingDate || acc.createdAt || member?.joinDate || new Date().toISOString().split('T')[0];
+
+                                                    if (openingTx.date !== correctDate) {
+                                                        fixTxs.push({
+                                                            transaction: { ...openingTx, date: correctDate },
+                                                            accountId: acc.id
+                                                        });
+                                                    }
+                                                }
+                                            });
+
+                                            if (fixTxs.length === 0) {
+                                                alert("No mismatched opening transactions found.");
+                                                return;
+                                            }
+
+                                            if (confirm(`Found ${fixTxs.length} mismatched opening transactions. Fix them now?`)) {
+                                                await bulkUpsertTransactions(fixTxs);
+                                                alert(`Successfully corrected ${fixTxs.length} transactions!`);
+                                                if (onImportSuccess) onImportSuccess(); // Refresh data
+                                            }
+                                        } catch (err: any) {
+                                            console.error(err);
+                                            alert("Fix failed: " + err.message);
+                                        } finally {
+                                            setIsRepairing(false);
+                                        }
+                                    }}
+                                    disabled={isRepairing}
+                                    className="px-6 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-bold flex items-center gap-2 disabled:opacity-50 shadow-sm"
+                                >
+                                    {isRepairing ? <Loader className="animate-spin" size={18} /> : <CheckCircle size={18} />}
+                                    Fix Dates
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
