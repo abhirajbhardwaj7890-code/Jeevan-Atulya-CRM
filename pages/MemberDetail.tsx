@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, LoanType, MemberDocument, UserRole, AppSettings, Guarantor, Nominee, LedgerEntry, Agent } from '../types';
 import { generateMemberSummary, analyzeFinancialHealth, draftInteractionNote, calculateMemberRisk } from '../services/gemini';
 import { formatDate, parseSafeDate } from '../services/utils';
+import { upsertTransaction } from '../services/data';
 import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search, DollarSign, XCircle } from 'lucide-react';
 
 interface MemberDetailProps {
@@ -117,7 +118,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         status: '',
         interestRate: '',
         maturityDate: '',
-        lowBalanceThreshold: ''
+        lowBalanceThreshold: '',
+        openingDate: ''
     });
 
     // View Account Modal State (Detail & Calculators)
@@ -405,6 +407,68 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         setShowEditMemberModal(true);
     };
 
+    const submitEditAccount = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editingAccount) return;
+
+        let newMaturityDate = editingAccount.maturityDate;
+        let updatedTransactions = [...editingAccount.transactions];
+
+        // Recalculate Maturity Date ONLY if Opening Date has changed manually
+        if (editAccountForm.openingDate && editAccountForm.openingDate !== editingAccount.openingDate) {
+            // 1. Maturity Recalc
+            if (editingAccount.termMonths) {
+                const d = new Date(editAccountForm.openingDate);
+                d.setMonth(d.getMonth() + editingAccount.termMonths);
+                newMaturityDate = d.toISOString().split('T')[0];
+            } else if (editingAccount.tenureDays) {
+                const d = new Date(editAccountForm.openingDate);
+                d.setDate(d.getDate() + editingAccount.tenureDays);
+                newMaturityDate = d.toISOString().split('T')[0];
+            }
+
+            // 2. Update First Transaction Date
+            // Prioritize "Opening" transaction from description/category, else earliest by date
+            let openingTxIndex = updatedTransactions.findIndex(t =>
+                (t.description && t.description.includes('Opening')) ||
+                (t.category === 'Opening Balance')
+            );
+
+            if (openingTxIndex === -1 && updatedTransactions.length > 0) {
+                // Fallback to earliest transaction
+                const sortedWithIndex = updatedTransactions.map((t, i) => ({ t, i })).sort((a, b) => new Date(a.t.date).getTime() - new Date(b.t.date).getTime());
+                openingTxIndex = sortedWithIndex[0].i;
+            }
+
+            if (openingTxIndex !== -1) {
+                const tx = updatedTransactions[openingTxIndex];
+                const updatedTx = { ...tx, date: editAccountForm.openingDate };
+                updatedTransactions[openingTxIndex] = updatedTx;
+
+                // Persist transaction update explicitly (since upsertAccount might not handle nested txs)
+                try {
+                    await upsertTransaction(updatedTx, editingAccount.id);
+                } catch (err) {
+                    console.error("Failed to update opening transaction date", err);
+                    alert("Warning: Account date updated, but failed to update transaction date.");
+                }
+            }
+        }
+
+        const updatedAccount = {
+            ...editingAccount,
+            status: editAccountForm.status as any,
+            interestRate: parseFloat(editAccountForm.interestRate),
+            openingDate: editAccountForm.openingDate,
+            maturityDate: newMaturityDate,
+            transactions: updatedTransactions
+        };
+
+        await onUpdateAccount(updatedAccount);
+        alert("Account updated successfully!");
+        setShowEditAccountModal(false);
+    };
+
     const submitEditMember = async (e: React.FormEvent) => {
         e.preventDefault();
 
@@ -439,7 +503,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         }
     };
 
-    const submitEditAccount = (e: React.FormEvent) => { e.preventDefault(); if (!editingAccount) return; const updatedAccount: Account = { ...editingAccount, status: editAccountForm.status as AccountStatus, interestRate: parseFloat(editAccountForm.interestRate), maturityDate: editAccountForm.maturityDate || undefined, lowBalanceAlertThreshold: editAccountForm.lowBalanceThreshold ? parseFloat(editAccountForm.lowBalanceThreshold) : undefined }; onUpdateAccount(updatedAccount); setShowEditAccountModal(false); };
+
 
     const openViewAccountModal = (acc: Account) => {
         setViewingAccount(acc);
@@ -1948,7 +2012,27 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             </div>
                                         </div>
 
-                                        <div className="flex justify-between items-start mb-4">
+                                        <div className="flex justify-between items-start mb-4 relative">
+                                            <div className="absolute top-0 right-0 p-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setEditingAccount(acc);
+                                                        setEditAccountForm({
+                                                            status: acc.status,
+                                                            interestRate: acc.interestRate?.toString() || '',
+                                                            maturityDate: acc.maturityDate || '',
+                                                            lowBalanceThreshold: '',
+                                                            openingDate: acc.openingDate || acc.createdAt || ''
+                                                        });
+                                                        setShowEditAccountModal(true);
+                                                    }}
+                                                    className="p-1 text-slate-400 hover:text-blue-600 bg-white rounded-full shadow-sm border border-slate-100"
+                                                    title="Edit Account"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                            </div>
                                             <div className="flex items-center gap-3">
                                                 <div className={`p-2 rounded-lg ${acc.type === AccountType.LOAN ? 'bg-amber-100 text-amber-700' : 'bg-blue-50 text-blue-600'}`}>
                                                     <CreditCard size={20} />
@@ -3200,6 +3284,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                             <div>
                                 <label className="block text-xs font-bold text-slate-500">Interest Rate (%)</label>
                                 <input type="number" className="w-full border p-2 rounded" value={editAccountForm.interestRate} onChange={e => setEditAccountForm({ ...editAccountForm, interestRate: e.target.value })} />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500">Opening Date</label>
+                                <input type="date" className="w-full border p-2 rounded" value={editAccountForm.openingDate} onChange={e => setEditAccountForm({ ...editAccountForm, openingDate: e.target.value })} />
+                                <p className="text-[10px] text-slate-400 mt-1">Changing this will recalculate Maturity Date based on term.</p>
                             </div>
                             <button type="submit" className="w-full py-2 bg-slate-900 text-white rounded font-bold">Update Account</button>
                         </form>
