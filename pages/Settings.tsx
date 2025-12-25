@@ -1284,29 +1284,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                         setIsRepairing(true);
                                         try {
                                             const fixTxs: { transaction: Transaction, accountId: string }[] = [];
+                                            const fixAccs: Account[] = [];
+
                                             accounts.forEach(acc => {
-                                                const openingTx = (acc.transactions || []).find(t => t.id === `TX-OPENING-${acc.id}`);
+                                                // 1. Find the opening transaction (either by ID or by category/order)
+                                                let openingTx = (acc.transactions || []).find(t => t.id === `TX-OPENING-${acc.id}`);
+                                                if (!openingTx) {
+                                                    // Fallback: Find the oldest transaction with Opening Balance category
+                                                    openingTx = (acc.transactions || [])
+                                                        .filter(t => t.category === 'Opening Balance' || t.description?.includes('Initial Deposit') || t.category === 'Loan Disbursement')
+                                                        .sort((a, b) => a.date.localeCompare(b.date))[0];
+                                                }
+
                                                 if (openingTx) {
                                                     const member = members.find(m => m.id === acc.memberId);
-                                                    const correctDate = acc.openingDate || acc.createdAt || member?.joinDate || new Date().toISOString().split('T')[0];
+                                                    // Calculate what the date SHOULD be
+                                                    const correctDate = acc.openingDate && acc.openingDate !== new Date().toISOString().split('T')[0]
+                                                        ? acc.openingDate
+                                                        : (member?.joinDate || acc.createdAt || new Date().toISOString().split('T')[0]);
+                                                    let needsUpdate = false;
 
+                                                    // Check transaction date
                                                     if (openingTx.date !== correctDate) {
+                                                        console.log(`Fixing transaction ${openingTx.id}: ${openingTx.date} -> ${correctDate}`);
                                                         fixTxs.push({
                                                             transaction: { ...openingTx, date: correctDate },
                                                             accountId: acc.id
                                                         });
+                                                        needsUpdate = true;
+                                                    }
+
+                                                    // Check account opening date
+                                                    if (acc.openingDate !== correctDate) {
+                                                        console.log(`Fixing account ${acc.accountNumber} opening date: ${acc.openingDate} -> ${correctDate}`);
+                                                        fixAccs.push({ ...acc, openingDate: correctDate });
+                                                        needsUpdate = true;
                                                     }
                                                 }
                                             });
 
-                                            if (fixTxs.length === 0) {
-                                                alert("No mismatched opening transactions found.");
+                                            if (fixTxs.length === 0 && fixAccs.length === 0) {
+                                                alert("No mismatched opening transactions or accounts found.");
                                                 return;
                                             }
 
-                                            if (confirm(`Found ${fixTxs.length} mismatched opening transactions. Fix them now?`)) {
-                                                await bulkUpsertTransactions(fixTxs);
-                                                alert(`Successfully corrected ${fixTxs.length} transactions!`);
+                                            if (confirm(`Found ${fixTxs.length} mismatched transactions and ${fixAccs.length} accounts to correct. Fix them now?`)) {
+                                                if (fixTxs.length > 0) await bulkUpsertTransactions(fixTxs);
+                                                if (fixAccs.length > 0) await bulkUpsertAccounts(fixAccs);
+                                                alert(`Successfully corrected ${fixTxs.length} transactions and ${fixAccs.length} accounts!`);
                                                 if (onImportSuccess) onImportSuccess(); // Refresh data
                                             }
                                         } catch (err: any) {
