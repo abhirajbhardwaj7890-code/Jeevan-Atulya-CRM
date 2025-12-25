@@ -47,7 +47,14 @@ export interface AppSettings {
       vehicle: number;
       emergency: number;
     }
-  }
+  };
+  messaging?: {
+    enabled: boolean;
+    provider: 'AndroidGateway' | 'None';
+    url: string;
+    apiKey: string;
+    officePhoneNumber: string;
+  };
 }
 
 export interface Branch {

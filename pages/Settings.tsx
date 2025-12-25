@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents } from '../services/data';
 import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
-import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X } from 'lucide-react';
+import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X, MessageSquare, Smartphone, Play } from 'lucide-react';
+import { MessagingService } from '../services/messaging';
 import * as XLSX from 'xlsx';
 
 interface SettingsPageProps {
@@ -697,6 +698,109 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         </div>
                     </div>
 
+                    <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6 mt-2">
+                        <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                            <MessageSquare className="text-blue-600" size={20} />
+                            Messaging Integration (Android Gateway)
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
+                                    <div>
+                                        <p className="font-bold text-blue-900 text-sm">Enable Automated Alerts</p>
+                                        <p className="text-xs text-blue-700">Send WhatsApp/SMS for deposits & accounts</p>
+                                    </div>
+                                    <button
+                                        onClick={() => setForm({
+                                            ...form,
+                                            messaging: { ...form.messaging!, enabled: !form.messaging?.enabled }
+                                        })}
+                                        className={`w-12 h-6 rounded-full transition-colors relative ${form.messaging?.enabled ? 'bg-blue-600' : 'bg-slate-300'}`}
+                                    >
+                                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-transform ${form.messaging?.enabled ? 'left-7' : 'left-1'}`} />
+                                    </button>
+                                </div>
+
+                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1">
+                                        <Smartphone size={14} /> Device Configuration
+                                    </h4>
+                                    <div className="space-y-3">
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 mb-1">Gateway URL (from Android App)</label>
+                                            <input
+                                                type="text"
+                                                placeholder="http://192.168.1.5:8080/send"
+                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                value={form.messaging?.url || ''}
+                                                onChange={(e) => setForm({
+                                                    ...form,
+                                                    messaging: { ...form.messaging!, url: e.target.value }
+                                                })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 mb-1">API Key / Key</label>
+                                            <input
+                                                type="password"
+                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                value={form.messaging?.apiKey || ''}
+                                                onChange={(e) => setForm({
+                                                    ...form,
+                                                    messaging: { ...form.messaging!, apiKey: e.target.value }
+                                                })}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 mb-1">Office Phone Number (Sender)</label>
+                                            <input
+                                                type="text"
+                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                value={form.messaging?.officePhoneNumber || ''}
+                                                onChange={(e) => setForm({
+                                                    ...form,
+                                                    messaging: { ...form.messaging!, officePhoneNumber: e.target.value }
+                                                })}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg">
+                                    <h4 className="text-xs font-bold text-amber-800 uppercase mb-2 flex items-center gap-1">
+                                        <Info size={14} /> Usage Note
+                                    </h4>
+                                    <p className="text-xs text-amber-700 leading-relaxed">
+                                        1. This uses your <strong>Android Phone</strong> as a gateway.<br />
+                                        2. Ensure the phone is connected to the same WiFi or has a public IP.<br />
+                                        3. Keep the Gateway App running on the phone.<br />
+                                        4. No additional per-message cost (uses your SIM plan).
+                                    </p>
+                                </div>
+
+                                <div className="p-4 border border-slate-200 rounded-lg flex flex-col items-center justify-center gap-3">
+                                    <p className="text-xs text-slate-500 font-medium">Test Connection</p>
+                                    <button
+                                        onClick={async () => {
+                                            if (!form.messaging?.url || !form.messaging?.apiKey || !form.messaging?.officePhoneNumber) {
+                                                alert("Please fill in URL, API Key, and Office Phone before testing.");
+                                                return;
+                                            }
+                                            const success = await MessagingService.sendMessage(form, form.messaging.officePhoneNumber, MessagingService.formatTestMessage());
+                                            if (success) alert("Test message sent! Check your office phone.");
+                                            else alert("Failed to send test message. Check gateway URL and Key.");
+                                        }}
+                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors"
+                                    >
+                                        <Play size={16} /> Send Test Message
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="col-span-1 md:col-span-2 flex justify-end">
                         <button
                             onClick={handleSave}
@@ -1012,9 +1116,13 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                             accounts.forEach(acc => {
                                                 // Check for accounts with balance but no transactions
                                                 if (acc.balance > 0 && (!acc.transactions || acc.transactions.length === 0)) {
+                                                    // Find the member for this account to get joinDate fallback
+                                                    const member = members.find(m => m.id === acc.memberId);
+                                                    const fallbackDate = member?.joinDate || new Date().toISOString().split('T')[0];
+
                                                     const tx: Transaction = {
                                                         id: `TX-OPENING-${acc.id}`,
-                                                        date: acc.openingDate || acc.createdAt || new Date().toISOString().split('T')[0],
+                                                        date: acc.openingDate || acc.createdAt || fallbackDate,
                                                         amount: acc.balance,
                                                         type: acc.type === AccountType.LOAN ? 'debit' : 'credit',
                                                         category: acc.type === AccountType.LOAN ? 'Loan Disbursement' : 'Opening Balance',

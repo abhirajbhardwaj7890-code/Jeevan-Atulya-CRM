@@ -19,6 +19,13 @@ export const DEFAULT_SETTINGS: AppSettings = {
             vehicle: 10.0,
             emergency: 14.0
         }
+    },
+    messaging: {
+        enabled: false,
+        provider: 'None',
+        url: '',
+        apiKey: '',
+        officePhoneNumber: ''
     }
 };
 
@@ -468,7 +475,7 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             supabase.from('society_ledger').select('*'),
             supabase.from('branches').select('*'),
             supabase.from('agents').select('*'),
-            supabase.from('app_settings').select('*')
+            supabase.from('settings').select('*')
         ]);
 
         // Fetch Groups (Simulated via local cache if table missing or fetch fails, for resilience during dev)
@@ -505,6 +512,7 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
                     else if (row.key === 'late_payment_fine') settings.latePaymentFine = Number(val);
                     else if (row.key === 'grace_period_days') settings.gracePeriodDays = Number(val);
                     else if (row.key === 'default_agent_fee') settings.defaultAgentFee = Number(val);
+                    else if (row.key === 'messaging') { try { settings.messaging = JSON.parse(val); } catch (e) { } }
                 });
             }
         }
@@ -691,7 +699,8 @@ export const saveSettings = async (settings: AppSettings) => {
         { key: 'late_payment_fine', value: String(settings.latePaymentFine) },
         { key: 'grace_period_days', value: String(settings.gracePeriodDays) },
         { key: 'interest_rates', value: JSON.stringify(settings.interestRates) },
-        { key: 'default_agent_fee', value: String(settings.defaultAgentFee) }
+        { key: 'default_agent_fee', value: String(settings.defaultAgentFee) },
+        { key: 'messaging', value: JSON.stringify(settings.messaging) }
     ];
 
     const { error } = await supabase.from('settings').upsert(updates, { onConflict: 'key' });

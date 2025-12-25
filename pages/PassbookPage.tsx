@@ -197,75 +197,77 @@ export const PassbookPage: React.FC<PassbookPageProps> = ({ member, accounts, on
         const processedRows: any[] = [];
 
         // 3. Grid Allocation (Bin Packing) per Date
-        Object.keys(groupedByDate).forEach(date => {
-            const txsForDate = groupedByDate[date];
+        Object.keys(groupedByDate)
+            .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())
+            .forEach(date => {
+                const txsForDate = groupedByDate[date];
 
-            // List of visual rows for this date. 
-            // Each row is an object { id, desc, cells: {}, isPrinted }
-            const visualRowsForDate: any[] = [];
+                // List of visual rows for this date. 
+                // Each row is an object { id, desc, cells: {}, isPrinted }
+                const visualRowsForDate: any[] = [];
 
-            txsForDate.forEach(tx => {
-                // Find the first visual row where the slot for this account code is empty
-                let placed = false;
+                txsForDate.forEach(tx => {
+                    // Find the first visual row where the slot for this account code is empty
+                    let placed = false;
 
-                for (const row of visualRowsForDate) {
-                    // If this row doesn't have a transaction for this Account Code yet
-                    if (!row.cells[tx.accCode]) {
-                        row.cells[tx.accCode] = {
-                            dr: tx.type === 'debit' ? tx.amount : 0,
-                            cr: tx.type === 'credit' ? tx.amount : 0,
-                            bal: tx.snapshotBalance
-                        };
-
-                        // Update Row Metadata
-                        row.id = tx.id; // Row ID takes latest transaction ID
-                        row.allIds.push(tx.id);
-
-                        // Logic: If ANY transaction in the row is unprinted, mark row as unprinted
-                        if (tx.isTxUnprinted) row.isPrinted = false;
-
-                        // Add payment method to set
-                        if (tx.paymentMethod) row.methods.add(tx.paymentMethod);
-
-                        placed = true;
-                        break;
-                    }
-                }
-
-                // If not placed in any existing row (collision), create a new row
-                if (!placed) {
-                    visualRowsForDate.push({
-                        id: tx.id,
-                        allIds: [tx.id],
-                        date: formatDate(date),
-                        cells: {
-                            [tx.accCode]: {
+                    for (const row of visualRowsForDate) {
+                        // If this row doesn't have a transaction for this Account Code yet
+                        if (!row.cells[tx.accCode]) {
+                            row.cells[tx.accCode] = {
                                 dr: tx.type === 'debit' ? tx.amount : 0,
                                 cr: tx.type === 'credit' ? tx.amount : 0,
                                 bal: tx.snapshotBalance
-                            }
-                        },
-                        methods: new Set([tx.paymentMethod || 'Cash']),
-                        isPrinted: !tx.isTxUnprinted // If tx is unprinted, row is unprinted
-                    });
-                }
-            });
+                            };
 
-            // 4. Finalize row descriptions (Payment Mode)
-            visualRowsForDate.forEach(row => {
-                const m = row.methods;
-                if (m.has('Both') || (m.has('Cash') && m.has('Online'))) {
-                    row.desc = 'cash/online';
-                } else if (m.has('Online')) {
-                    row.desc = 'online';
-                } else {
-                    row.desc = 'cash';
-                }
-            });
+                            // Update Row Metadata
+                            row.id = tx.id; // Row ID takes latest transaction ID
+                            row.allIds.push(tx.id);
 
-            // Add generated rows to final list
-            processedRows.push(...visualRowsForDate);
-        });
+                            // Logic: If ANY transaction in the row is unprinted, mark row as unprinted
+                            if (tx.isTxUnprinted) row.isPrinted = false;
+
+                            // Add payment method to set
+                            if (tx.paymentMethod) row.methods.add(tx.paymentMethod);
+
+                            placed = true;
+                            break;
+                        }
+                    }
+
+                    // If not placed in any existing row (collision), create a new row
+                    if (!placed) {
+                        visualRowsForDate.push({
+                            id: tx.id,
+                            allIds: [tx.id],
+                            date: formatDate(date),
+                            cells: {
+                                [tx.accCode]: {
+                                    dr: tx.type === 'debit' ? tx.amount : 0,
+                                    cr: tx.type === 'credit' ? tx.amount : 0,
+                                    bal: tx.snapshotBalance
+                                }
+                            },
+                            methods: new Set([tx.paymentMethod || 'Cash']),
+                            isPrinted: !tx.isTxUnprinted // If tx is unprinted, row is unprinted
+                        });
+                    }
+                });
+
+                // 4. Finalize row descriptions (Payment Mode)
+                visualRowsForDate.forEach(row => {
+                    const m = row.methods;
+                    if (m.has('Both') || (m.has('Cash') && m.has('Online'))) {
+                        row.desc = 'cash/online';
+                    } else if (m.has('Online')) {
+                        row.desc = 'online';
+                    } else {
+                        row.desc = 'cash';
+                    }
+                });
+
+                // Add generated rows to final list
+                processedRows.push(...visualRowsForDate);
+            });
 
         return processedRows;
     }, [allMemberTransactions, member.lastPrintedTransactionId]);

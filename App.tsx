@@ -13,6 +13,7 @@ import { SettingsPage } from './pages/Settings';
 import { Accounting } from './pages/Accounting';
 import { PassbookPage } from './pages/PassbookPage';
 import { Groups } from './pages/Groups';
+import { MessagingService } from './services/messaging';
 import {
     loadData,
     upsertMember,
@@ -262,6 +263,11 @@ const App: React.FC = () => {
                             await upsertAccount(updatedAccounts[odAccountIndex]);
                             await upsertTransaction(updatedAccounts[odAccountIndex].transactions[0], updatedAccounts[odAccountIndex].id);
 
+                            // Send Automated Message for Maturity Transfer
+                            if (settings.messaging?.enabled) {
+                                MessagingService.sendMessage(settings, member.phone, `Maturity Alert: Your ${acc.type} (${acc.accountNumber}) has matured. Balance ₹${transferAmount} has been transferred to your Optional Deposit account.`);
+                            }
+
                             updatesMade = true;
                         }
                     }
@@ -421,6 +427,14 @@ const App: React.FC = () => {
             }
             setMembers(prev => [newMember, ...prev]);
             setAccounts(prev => [...newAccounts, ...prev]);
+
+            // Send Automated Messages for new accounts
+            if (settings.messaging?.enabled) {
+                for (const acc of newAccounts) {
+                    MessagingService.sendMessage(settings, newMember.phone, MessagingService.formatAccountOpening(newMember, acc));
+                }
+            }
+
             if (shouldNavigate) setCurrentPage('members');
             return true;
         } catch (e) {
@@ -463,6 +477,14 @@ const App: React.FC = () => {
         await upsertAccount(newAccount);
         if (newAccount.transactions.length > 0) {
             await upsertTransaction(newAccount.transactions[0], newAccount.id);
+        }
+
+        // Send Automated Message for new account
+        if (settings.messaging?.enabled) {
+            const member = members.find(m => m.id === memberId);
+            if (member) {
+                MessagingService.sendMessage(settings, member.phone, MessagingService.formatAccountOpening(member, newAccount));
+            }
         }
 
         if ((accountData.balance || 0) > 0 && accountData.type !== AccountType.LOAN) {
@@ -562,6 +584,14 @@ const App: React.FC = () => {
         } catch (e) {
             console.error("Failed to persist transaction", e);
         }
+
+        // Send Automated Message for transaction
+        if (settings.messaging?.enabled) {
+            const member = members.find(m => m.id === account.memberId);
+            if (member) {
+                MessagingService.sendMessage(settings, member.phone, MessagingService.formatTransaction(member, account, newTransaction));
+            }
+        }
     };
 
     const handleAddLedgerEntry = async (entry: LedgerEntry) => {
@@ -605,8 +635,17 @@ const App: React.FC = () => {
     };
 
     const handleUpdateAccount = async (updatedAccount: Account) => {
+        const previousAccount = accounts.find(a => a.id === updatedAccount.id);
         setAccounts(prevAccounts => prevAccounts.map(a => a.id === updatedAccount.id ? updatedAccount : a));
         await upsertAccount(updatedAccount);
+
+        // Send Automated Message for account closing
+        if (settings.messaging?.enabled && previousAccount?.status !== AccountStatus.CLOSED && updatedAccount.status === AccountStatus.CLOSED) {
+            const member = members.find(m => m.id === updatedAccount.memberId);
+            if (member) {
+                MessagingService.sendMessage(settings, member.phone, MessagingService.formatAccountClosing(member, updatedAccount));
+            }
+        }
     };
 
     const handleAddBranch = async (branch: Branch) => {

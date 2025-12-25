@@ -141,6 +141,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         file: null as File | null
     });
     const [isUploading, setIsUploading] = useState(false);
+    const [isSubmittingTransaction, setIsSubmittingTransaction] = useState(false);
+    const [isSubmittingAccount, setIsSubmittingAccount] = useState(false);
+    const [isActivating, setIsActivating] = useState(false);
 
     // Account Modal State (Wizard)
     const [showAccountModal, setShowAccountModal] = useState(false);
@@ -930,13 +933,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         <head>
           <title>Registration Receipt</title>
           <style>
-            @page { size: portrait; margin: 4mm; }
+            @page { size: landscape; margin: 5mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
-            .receipt-container { display: flex; flex-direction: row; gap: 4mm; width: 100%; height: 100%; }
-            .receipt-copy-box { width: 50%; border-right: 1px dashed #ccc; padding-right: 2mm; overflow: hidden; }
-            .receipt-copy-box:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
+            .receipt-container { display: flex; flex-direction: row; gap: 10mm; width: 100%; justify-content: space-between; }
+            .receipt-copy-box { width: calc(50% - 6mm); border-right: 1.5px dashed #444; padding-right: 6mm; }
+            .receipt-copy-box:last-child { border-right: none; padding-right: 0; padding-left: 6mm; }
             
-            .receipt-box { padding: 5px; display: flex; flex-direction: column; min-height: 120mm; position:relative; border: 1px solid #000; }
+            .receipt-box { padding: 8px; display: flex; flex-direction: column; min-height: 125mm; position:relative; border: 1.5px solid #000; width: 100%; }
             
             .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
             
@@ -1167,13 +1170,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
       <head>
         <title>Receipt ${tx.id}</title>
         <style>
-          @page { size: portrait; margin: 4mm; }
+          @page { size: landscape; margin: 5mm; }
           body { font-family: Arial, sans-serif; font-size: 11px; padding: 0; margin: 0; }
-          .page-container { display: flex; flex-direction: row; width: 100%; gap: 4mm; height: 100%; }
-          .receipt-copy { width: 50%; border-right: 1px dashed #ccc; padding-right: 2mm; overflow: hidden; }
-          .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
+          .page-container { display: flex; flex-direction: row; width: 100%; gap: 10mm; justify-content: space-between; }
+          .receipt-copy { width: calc(50% - 6mm); border-right: 1.5px dashed #444; padding-right: 6mm; }
+          .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 6mm; }
           
-          .receipt-box { border: 1px solid #000; padding: 10px; background: #fff; position: relative; min-height: 100mm; }
+          .receipt-box { border: 1.5px solid #000; padding: 15px; background: #fff; position: relative; min-height: 110mm; width: 100%; }
           
           /* RD Receipt Styles */
           .rd-receipt { padding: 10px; font-family: 'Courier New', Courier, monospace; }
@@ -1228,12 +1231,14 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         printViaWindow(generateReceiptHTML(tx, acc, balanceAfter, member));
     };
 
-    const submitTransaction = (e: React.FormEvent) => {
+    const submitTransaction = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!transForm.accountId) return;
+        if (isSubmittingTransaction) return;
 
+        if (!transForm.accountId) return;
         const account = accounts.find(a => a.id === transForm.accountId);
         if (!account) return;
+
         // Disallow transactions on pending loan accounts
         if (account.type === AccountType.LOAN && account.status === AccountStatus.PENDING) {
             alert('Cannot process transactions on a pending loan account.');
@@ -1252,16 +1257,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         if (amt <= 0) return;
 
-        /*
-        // UTR is now OPTIONAL as per request
-        if ((transForm.paymentMethod === 'Online' || transForm.paymentMethod === 'Both') && !transForm.utrNumber) {
-            // Warning removed
-        } 
-        */
-
         const type = transForm.type as 'credit' | 'debit';
-
-        // ACCOUNT SPECIFIC GUARDS
         const isLoan = account.type === AccountType.LOAN;
         const isFD = account.type === AccountType.FIXED_DEPOSIT;
         const isRD = account.type === AccountType.RECURRING_DEPOSIT;
@@ -1279,76 +1275,98 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             return;
         }
 
-        // 3. RD/DD Installment Info (No Limit - Allow Backlog Clearance or Future Payments)
-        if (type === 'credit' && isRD) {
-            const installment = account.originalAmount || 0;
-
-            if (account.type === AccountType.RECURRING_DEPOSIT) {
-                const startDateStr = account.createdAt || member.joinDate;
-                const startDate = new Date(startDateStr);
-                const todayDate = new Date();
-
-                let periodsPassed = 0;
-                if (account.rdFrequency === 'Daily') {
-                    const diffTime = todayDate.getTime() - startDate.getTime();
-                    periodsPassed = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                } else {
-                    periodsPassed = (todayDate.getFullYear() - startDate.getFullYear()) * 12 + (todayDate.getMonth() - startDate.getMonth());
-                }
-
-                const totalInstallmentsDueCount = Math.max(0, periodsPassed) + 1;
-                const totalAmountShouldHaveBeenPaid = totalInstallmentsDueCount * installment;
-                const totalActuallyPaid = account.transactions
-                    .filter(t => t.type === 'credit')
-                    .reduce((sum, t) => sum + t.amount, 0);
-
-                const amountDueNow = totalAmountShouldHaveBeenPaid - totalActuallyPaid;
-
-                // Info message only - no limit enforcement
-                if (amountDueNow > 0) {
-                    console.log(`RD Payment Info - Installment: ${formatCurrency(installment)}, Backlog: ${formatCurrency(Math.max(0, amountDueNow))}, Paying: ${formatCurrency(amt)}`);
-                } else {
-                    console.log(`RD Payment Info - Installment: ${formatCurrency(installment)}, Advance Payment: ${formatCurrency(amt)}, No Backlog`);
-                }
-                // No limit check - allow any amount (clears backlog or registers as future installments)
-            }
-        }
-        const txId = `TX-${Date.now()}`;
         // Validate minimum date (22/10/2025)
         const MIN_DATE = '2025-10-22';
         if (transForm.date < MIN_DATE) {
             alert(`Transaction date cannot be earlier than 22/10/2025.\nSelected date: ${formatDate(transForm.date)}`);
             return;
         }
-        const txDate = transForm.date; // Use selected date from form
 
-        let newBal = account.balance;
-        if (account.type === AccountType.LOAN) {
-            if (type === 'credit') newBal -= amt;
-            else newBal += amt;
-        } else {
-            if (type === 'credit') newBal += amt;
-            else newBal -= amt;
+        setIsSubmittingTransaction(true);
+        try {
+            const txId = `TX-${Date.now()}`;
+            const txDate = transForm.date;
+
+            let newBal = account.balance;
+            if (isLoan) {
+                if (type === 'credit') newBal -= amt;
+                else newBal += amt;
+            } else {
+                if (type === 'credit') newBal += amt;
+                else newBal -= amt;
+            }
+
+            const newTx: Transaction = {
+                id: txId,
+                amount: amt,
+                type: type,
+                description: transForm.description,
+                date: txDate,
+                dueDate: transForm.dueDate || undefined,
+                paymentMethod: transForm.paymentMethod,
+                cashAmount: transForm.paymentMethod === 'Both' ? parseFloat(transForm.cashAmount) || 0 : undefined,
+                onlineAmount: transForm.paymentMethod === 'Both' ? parseFloat(transForm.onlineAmount) || 0 : undefined,
+                utrNumber: transForm.utrNumber || undefined
+            };
+
+            await onAddTransaction(transForm.accountId, newTx);
+
+            if (type === 'debit') {
+                await onAddLedgerEntry({
+                    id: `LDG-WDL-${Date.now()}`,
+                    date: transForm.date,
+                    description: `Withdrawal - ${member.fullName} (${account.accountNumber})`,
+                    amount: amt,
+                    type: 'Expense',
+                    category: 'Member Withdrawals',
+                    cashAmount: transForm.paymentMethod === 'Both' ? (parseFloat(transForm.cashAmount) || 0) : (transForm.paymentMethod === 'Cash' ? amt : 0),
+                    onlineAmount: transForm.paymentMethod === 'Both' ? (parseFloat(transForm.onlineAmount) || 0) : (transForm.paymentMethod === 'Online' ? amt : 0),
+                    utrNumber: transForm.utrNumber
+                });
+            }
+
+            setTransactionSuccess({
+                txId,
+                amount: amt,
+                type,
+                accountNumber: account.accountNumber,
+                accountType: account.type,
+                date: new Date().toLocaleString(),
+                balanceAfter: newBal,
+                description: transForm.description
+            });
+            setTransForm({
+                accountId: accounts[0]?.id || '',
+                type: 'credit',
+                amount: '',
+                description: '',
+                date: new Date().toISOString().split('T')[0],
+                dueDate: '',
+                paymentMethod: 'Cash',
+                cashAmount: '',
+                onlineAmount: '',
+                utrNumber: ''
+            });
+        } finally {
+            setIsSubmittingTransaction(false);
         }
-
-        const newTx: Transaction = {
-            id: txId,
-            amount: amt,
-            type: type,
-            description: transForm.description,
-            date: txDate,
-            dueDate: transForm.dueDate || undefined,
-            paymentMethod: transForm.paymentMethod,
-            cashAmount: transForm.paymentMethod === 'Both' ? parseFloat(transForm.cashAmount) || 0 : undefined,
-            onlineAmount: transForm.paymentMethod === 'Both' ? parseFloat(transForm.onlineAmount) || 0 : undefined,
-            utrNumber: transForm.utrNumber || undefined
-        };
-
-        onAddTransaction(transForm.accountId, newTx);
-        setTransactionSuccess({ txId, amount: amt, type, accountNumber: account.accountNumber, accountType: account.type, date: new Date().toLocaleString(), balanceAfter: newBal, description: transForm.description });
-        setTransForm({ accountId: accounts[0]?.id || '', type: 'credit', amount: '', description: '', dueDate: '', paymentMethod: 'Cash', cashAmount: '', onlineAmount: '', utrNumber: '' });
     };
-    const handlePrintSuccessReceipt = () => { if (!transactionSuccess) return; const acc = accounts.find(a => a.accountNumber === transactionSuccess.accountNumber); if (acc) { printReceipt({ id: transactionSuccess.txId, amount: transactionSuccess.amount, type: transactionSuccess.type as any, date: new Date().toISOString(), description: transactionSuccess.description, paymentMethod: 'Cash' }, acc, transactionSuccess.balanceAfter); } };
+
+    const handlePrintSuccessReceipt = () => {
+        if (!transactionSuccess) return;
+        const acc = accounts.find(a => a.accountNumber === transactionSuccess.accountNumber);
+        if (acc) {
+            printReceipt({
+                id: transactionSuccess.txId,
+                amount: transactionSuccess.amount,
+                type: transactionSuccess.type as any,
+                date: new Date().toISOString(),
+                description: transactionSuccess.description,
+                paymentMethod: 'Cash'
+            }, acc, transactionSuccess.balanceAfter);
+        }
+    };
+
     const closeTransModal = () => {
         setShowTransModal(false);
         setTransactionSuccess(null);
@@ -1359,17 +1377,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     useEffect(() => {
         if (!interestChecked && accounts.length > 0) {
             const today = new Date();
-            const todayStr = today.toISOString().split('T')[0];
-
             accounts.forEach(acc => {
                 const startDateStr = acc.lastInterestPostDate || acc.openingDate || acc.createdAt || member.joinDate;
                 let startDate = new Date(startDateStr);
 
-                // Keep posting until we catch up to today
                 while (true) {
                     const nextMonth = new Date(startDate);
                     nextMonth.setMonth(nextMonth.getMonth() + 1);
-
                     if (nextMonth > today) break;
 
                     let interest = 0;
@@ -1383,7 +1397,6 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                             interest = principal * (rate / 100) / 12;
                             description = `Monthly Interest (Flat Rate ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
                         } else {
-                            // Personal Loans: Reducing Balance (Interest on current balance)
                             interest = acc.balance * (rate / 100) / 12;
                             description = `Monthly Interest (Reducing ${rate}%) - ${nextMonth.toLocaleString('default', { month: 'short', year: 'numeric' })}`;
                         }
@@ -1405,29 +1418,34 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                         };
 
                         onAddTransaction(acc.id, newTx);
-
-                        // Update current state for next loop iteration (compounding)
                         if (!isLoan) acc.balance += Math.round(interest);
-
-                        onUpdateAccount({
-                            ...acc,
-                            lastInterestPostDate: postDate
-                        });
-
+                        onUpdateAccount({ ...acc, lastInterestPostDate: postDate });
                         startDate = nextMonth;
                     } else {
                         break;
                     }
                 }
             });
-
             setInterestChecked(true);
         }
     }, [interestChecked, accounts, member.joinDate, onAddTransaction, onUpdateAccount]);
 
     // --- Account Wizard Logic ---
-    const handleNextStep = () => { if (accountWizardStep === 1) { setAccountWizardStep(2); } else if (accountWizardStep === 2) { if (accountForm.type === AccountType.LOAN && (!guarantors.g1Name || !guarantors.g1Phone)) { alert("At least one guarantor is required for loans."); return; } setAccountWizardStep(3); } };
-    const handlePrevStep = () => { if (accountWizardStep > 1) setAccountWizardStep(accountWizardStep - 1); };
+    const handleNextStep = () => {
+        if (accountWizardStep === 1) {
+            setAccountWizardStep(2);
+        } else if (accountWizardStep === 2) {
+            if (accountForm.type === AccountType.LOAN && (!guarantors.g1Name || !guarantors.g1Phone)) {
+                alert("At least one guarantor is required for loans.");
+                return;
+            }
+            setAccountWizardStep(3);
+        }
+    };
+
+    const handlePrevStep = () => {
+        if (accountWizardStep > 1) setAccountWizardStep(accountWizardStep - 1);
+    };
 
     const calculate = useCallback(() => {
         const P = parseFloat(accountForm.amount) || 0;
@@ -1472,33 +1490,6 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             setCalcResult({ maturityAmount: Math.round(totalPrincipal + interest), interestEarned: Math.round(interest), principal: totalPrincipal, totalPayable: Math.round(totalPrincipal + interest), maturityDate: maturityDateStr });
         } else if (accountForm.type === AccountType.LOAN) {
             if (accountForm.loanType === LoanType.PERSONAL) {
-                // REDUCING BALANCE Logic for Personal Loans (Standard EMI)
-                const r = R / 12 / 100;
-                if (termMonths > 0) {
-                    const emi = (P * r * Math.pow(1 + r, termMonths)) / (Math.pow(1 + r, termMonths) - 1);
-                    const totalPay = emi * termMonths;
-                    setCalcResult({
-                        emi: Math.round(emi),
-                        totalInterest: Math.round(totalPay - P),
-                        totalPayable: Math.round(totalPay),
-                        principal: P,
-                        maturityDate: maturityDateStr
-                    });
-                } else {
-                    setCalcResult({ principal: P, maturityDate: maturityDateStr });
-                }
-            } else if (accountForm.loanType === LoanType.EMERGENCY) {
-                // Monthly Flat Rate: Interest is added monthly, not upfront
-                // EMI here only covers principal repayment
-                const emi = termMonths > 0 ? P / termMonths : 0;
-                setCalcResult({
-                    emi: Math.round(emi),
-                    totalInterest: 0, // Interest posted monthly later
-                    totalPayable: P,
-                    principal: P,
-                    maturityDate: maturityDateStr
-                });
-            } else {
                 const r = R / 12 / 100;
                 if (termMonths > 0) {
                     const emi = (P * r * Math.pow(1 + r, termMonths)) / (Math.pow(1 + r, termMonths) - 1);
@@ -1507,6 +1498,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 } else {
                     setCalcResult({ principal: P, maturityDate: maturityDateStr });
                 }
+            } else if (accountForm.loanType === LoanType.EMERGENCY) {
+                const emi = termMonths > 0 ? P / termMonths : 0;
+                setCalcResult({ emi: Math.round(emi), totalInterest: 0, totalPayable: P, principal: P, maturityDate: maturityDateStr });
             }
         } else {
             setCalcResult({ principal: P, maturityDate: maturityDateStr });
@@ -1519,8 +1513,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         }
     }, [showAccountModal, accountWizardStep, accountForm, calculate]);
 
-    const submitAccount = (e: React.FormEvent) => {
+    const submitAccount = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isSubmittingAccount) return;
 
         // Validate minimum date (22/10/2025)
         const MIN_DATE = '2025-10-22';
@@ -1529,71 +1524,70 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             return;
         }
 
-        const openingBalance = parseFloat(accountForm.amount) || 0;
+        setIsSubmittingAccount(true);
+        try {
+            const openingBalance = parseFloat(accountForm.amount) || 0;
 
-        // EMERGENCY LOAN FEES CHECK (₹700)
-        if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY) {
-            const feeAmount = 700;
+            if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY) {
+                const feeAmount = 700;
+                await onAddLedgerEntry({
+                    id: `LDG-FEES-${Date.now()}`,
+                    memberId: member.id,
+                    date: accountForm.openingDate,
+                    description: `Loan Fees (Emergency) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
+                    amount: feeAmount,
+                    type: 'Income',
+                    category: 'Loan Processing Fees',
+                    cashAmount: feeAmount,
+                    onlineAmount: 0
+                });
+            }
 
-            // Add to Ledger as Income (Cash)
-            onAddLedgerEntry({
-                id: `LDG-FEES-${Date.now()}`,
-                memberId: member.id,
-                date: accountForm.openingDate,
-                description: `Loan Fees (Emergency) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
-                amount: feeAmount,
-                type: 'Income',
-                category: 'Loan Processing Fees',
-                cashAmount: feeAmount,
-                onlineAmount: 0
+            const finalGuarantors: Guarantor[] = [];
+            if (accountForm.type === AccountType.LOAN) {
+                if (guarantors.g1Name) finalGuarantors.push({ name: guarantors.g1Name, phone: guarantors.g1Phone, relation: guarantors.g1Rel });
+                if (guarantors.g2Name) finalGuarantors.push({ name: guarantors.g2Name, phone: guarantors.g2Phone, relation: guarantors.g2Rel });
+            }
+
+            const newAccountData: Partial<Account> & { cashAmount?: number; onlineAmount?: number; utrNumber?: string } = {
+                type: accountForm.type,
+                loanType: accountForm.type === AccountType.LOAN ? accountForm.loanType : undefined,
+                balance: openingBalance,
+                status: AccountStatus.ACTIVE,
+                currency: 'INR',
+                interestRate: parseFloat(accountForm.interestRate),
+                termMonths: accountForm.type === AccountType.FIXED_DEPOSIT
+                    ? (parseFloat(accountForm.tenureYears) || 0) * 12
+                    : accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
+                        ? Math.round((parseInt(accountForm.tenureDays) || 0) / 30.41)
+                        : (parseInt(accountForm.tenureMonths) || 0),
+                tenureDays: accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
+                    ? parseInt(accountForm.tenureDays) || 0
+                    : undefined,
+                maturityDate: calcResult?.maturityDate,
+                rdFrequency: accountForm.type === AccountType.RECURRING_DEPOSIT ? accountForm.rdFrequency as any : undefined,
+                originalAmount: openingBalance,
+                initialAmount: openingBalance,
+                emi: calcResult?.emi,
+                guarantors: finalGuarantors,
+                openingDate: accountForm.openingDate,
+                paymentMethod: accountForm.paymentMethod,
+                cashAmount: accountForm.paymentMethod === 'Both' ? (parseFloat(accountForm.cashAmount) || 0) : undefined,
+                onlineAmount: accountForm.paymentMethod === 'Both' ? (parseFloat(accountForm.onlineAmount) || 0) : undefined,
+                utrNumber: accountForm.utrNumber
+            };
+
+            await onAddAccount(member.id, newAccountData as any);
+
+            setAccountSuccess({
+                id: `NEW-${Date.now()}`,
+                type: accountForm.type,
+                accountNumber: 'Generated...',
+                amount: openingBalance
             });
+        } finally {
+            setIsSubmittingAccount(false);
         }
-
-        const finalGuarantors: Guarantor[] = [];
-        if (accountForm.type === AccountType.LOAN) {
-            if (guarantors.g1Name) finalGuarantors.push({ name: guarantors.g1Name, phone: guarantors.g1Phone, relation: guarantors.g1Rel });
-            if (guarantors.g2Name) finalGuarantors.push({ name: guarantors.g2Name, phone: guarantors.g2Phone, relation: guarantors.g2Rel });
-        }
-
-        const totalAmountForAccount = openingBalance;
-
-        const newAccountData: Partial<Account> = {
-            type: accountForm.type,
-            loanType: accountForm.type === AccountType.LOAN ? accountForm.loanType : undefined,
-            balance: totalAmountForAccount,
-            status: AccountStatus.ACTIVE,
-            currency: 'INR',
-            interestRate: parseFloat(accountForm.interestRate),
-            termMonths: accountForm.type === AccountType.FIXED_DEPOSIT
-                ? (parseFloat(accountForm.tenureYears) || 0) * 12
-                : accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
-                    ? Math.round((parseInt(accountForm.tenureDays) || 0) / 30.41) // Approximation for compatibility
-                    : (parseInt(accountForm.tenureMonths) || 0),
-            tenureDays: accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
-                ? parseInt(accountForm.tenureDays) || 0
-                : undefined,
-            maturityDate: calcResult?.maturityDate,
-            rdFrequency: accountForm.type === AccountType.RECURRING_DEPOSIT ? accountForm.rdFrequency as any : undefined,
-            originalAmount: totalAmountForAccount, // Total debt for personal loan
-            initialAmount: openingBalance, // Original principal
-            emi: calcResult?.emi,
-            guarantors: finalGuarantors,
-            openingDate: accountForm.openingDate, // Pass opening date
-            paymentMethod: accountForm.paymentMethod,
-            cashAmount: accountForm.paymentMethod === 'Both' ? (parseFloat(accountForm.cashAmount) || 0) : undefined,
-            onlineAmount: accountForm.paymentMethod === 'Both' ? (parseFloat(accountForm.onlineAmount) || 0) : undefined,
-            utrNumber: accountForm.utrNumber
-        };
-
-        onAddAccount(member.id, newAccountData);
-
-        // Set success state for confirmation screen
-        setAccountSuccess({
-            id: `NEW-${Date.now()}`, // Temporary until refresh
-            type: accountForm.type,
-            accountNumber: 'Generated...',
-            amount: openingBalance
-        });
     };
 
     const closeAccountModal = () => {
@@ -1607,11 +1601,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
     const submitActivation = async (e: React.FormEvent) => {
         e.preventDefault();
+        if (isActivating) return;
 
         const activationDate = activateForm.activationDate || new Date().toISOString().split('T')[0];
         const totalFees = activateForm.buildingFund + activateForm.shareMoney + activateForm.compulsoryDeposit + activateForm.welfareFund + activateForm.entryCharge;
 
-        // Validation for Split
         if (activateForm.paymentMethod === 'Both') {
             const cash = parseFloat(activateForm.cashAmount) || 0;
             const online = parseFloat(activateForm.onlineAmount) || 0;
@@ -1621,63 +1615,62 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             }
         }
 
-        // 1. Create Receipt Document
-        const receiptDoc: MemberDocument = {
-            id: `DOC-REG-${Date.now()}`,
-            name: 'Registration Receipt',
-            type: 'Receipt',
-            category: 'Other',
-            description: 'Membership Activation Receipt',
-            uploadDate: activationDate,
-            url: '#'
-        };
+        setIsActivating(true);
+        try {
+            const activationReceiptDoc: MemberDocument = {
+                id: `DOC-REG-${Date.now()}`,
+                name: 'Registration Receipt',
+                type: 'Receipt',
+                category: 'Other',
+                description: 'Membership Activation Receipt',
+                uploadDate: activationDate,
+                url: '#'
+            };
 
-        // 2. Update Member Status & Docs
-        const updatedMember = {
-            ...member,
-            status: 'Active' as const,
-            documents: [...(member.documents || []), receiptDoc]
-        };
+            const memberWithReceipt = {
+                ...member,
+                status: 'Active' as const,
+                documents: [...(member.documents || []), activationReceiptDoc]
+            };
 
-        onUpdateMember(updatedMember);
+            await onUpdateMember(memberWithReceipt);
 
-        // 3. Create Accounts
-        onAddAccount(member.id, {
-            type: AccountType.SHARE_CAPITAL,
-            balance: activateForm.shareMoney,
-            originalAmount: activateForm.shareMoney,
-            status: AccountStatus.ACTIVE,
-            currency: 'INR',
-            interestRate: 0,
-            openingDate: activationDate
-        });
+            await onAddAccount(member.id, {
+                type: AccountType.SHARE_CAPITAL,
+                balance: activateForm.shareMoney,
+                originalAmount: activateForm.shareMoney,
+                status: AccountStatus.ACTIVE,
+                currency: 'INR',
+                interestRate: 0,
+                openingDate: activationDate
+            });
 
-        onAddAccount(member.id, {
-            type: AccountType.COMPULSORY_DEPOSIT,
-            balance: activateForm.compulsoryDeposit,
-            originalAmount: activateForm.compulsoryDeposit,
-            status: AccountStatus.ACTIVE,
-            currency: 'INR',
-            interestRate: appSettings.interestRates.compulsoryDeposit,
-            openingDate: activationDate
-        });
+            await onAddAccount(member.id, {
+                type: AccountType.COMPULSORY_DEPOSIT,
+                balance: activateForm.compulsoryDeposit,
+                originalAmount: activateForm.compulsoryDeposit,
+                status: AccountStatus.ACTIVE,
+                currency: 'INR',
+                interestRate: appSettings.interestRates.compulsoryDeposit,
+                openingDate: activationDate
+            });
 
-        // 4. Create Ledger Entry for Fees (using prop)
-        onAddLedgerEntry({
-            id: `LDG-ACTIVATE-${Date.now()}`,
-            date: activationDate,
-            description: `Activation Fees - ${member.fullName}`,
-            amount: totalFees,
-            type: 'Income',
-            category: 'Admission Fees & Deposits',
-            cashAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.cashAmount) || 0 : undefined,
-            onlineAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.onlineAmount) || 0 : undefined,
-        });
+            await onAddLedgerEntry({
+                id: `LDG-ACTIVATE-${Date.now()}`,
+                date: activationDate,
+                description: `Activation Fees - ${member.fullName}`,
+                amount: totalFees,
+                type: 'Income',
+                category: 'Admission Fees & Deposits',
+                cashAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.cashAmount) || 0 : undefined,
+                onlineAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.onlineAmount) || 0 : undefined,
+            });
 
-        // 5. Print Receipt
-        handlePrintRegReceipt(totalFees);
-
-        setShowActivateModal(false);
+            handlePrintRegReceipt(totalFees);
+            setShowActivateModal(false);
+        } finally {
+            setIsActivating(false);
+        }
     };
 
     const handlePrintStatement = () => {
@@ -1685,7 +1678,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const allTx = accounts
             .filter(a => !(a.type === AccountType.LOAN && a.status === 'Pending'))
             .flatMap(a => a.transactions.map(t => ({ ...t, account: a.accountNumber, accType: a.type })))
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            .sort((a, b) => {
+                const da = new Date(a.date).getTime();
+                const db = new Date(b.date).getTime();
+                if (da !== db) return db - da;
+                return b.id.localeCompare(a.id);
+            });
         const content = `<html><head><style>body { font-family: Arial, sans-serif; padding: 20px; } table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 12px; } th, td { border: 1px solid #ccc; padding: 8px; text-align: left; } .amount { text-align: right; }</style></head><body><h1>Statement</h1><table><thead><tr><th>Date</th><th>Account</th><th>Type</th><th>Description</th><th>UTR</th><th class="amount">Amount</th></tr></thead><tbody>${allTx.map(t => `<tr><td>${formatDate(t.date)}</td><td>${t.account}<br/>${t.accType}</td><td>${t.type}</td><td>${t.description}</td><td>${t.utrNumber || '-'}</td><td class="amount">${formatCurrency(t.amount)}</td></tr>`).join('')}</tbody></table></body></html>`;
         printViaWindow(content);
     };
@@ -2103,7 +2101,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                         ref: l.category,
                                                         itemType: 'ledger' as const
                                                     })) : [])
-                                                ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                                                ].sort((a, b) => {
+                                                    const da = new Date(a.date).getTime();
+                                                    const db = new Date(b.date).getTime();
+                                                    if (da !== db) return db - da;
+                                                    return b.id.localeCompare(a.id); // Newest first
+                                                })
                                                     .slice(0, 1000);
 
                                                 if (allActivity.length === 0) {
@@ -2375,7 +2378,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                 ))}
                             </div>
 
-                            <form onSubmit={submitAccount} className="space-y-4">
+                            <form onSubmit={submitEditAccount} className="space-y-4">
                                 {accountWizardStep === 1 && (
                                     <div className="animate-fade-in space-y-4">
                                         <div>
@@ -2767,8 +2770,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             </div>
                                         )}
                                         {!(accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL) && <div className="mb-6"></div>}
-                                        <button type="submit" className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-lg">
-                                            Confirm Creation
+                                        <button type="submit" disabled={isSubmittingAccount} className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-lg disabled:opacity-50">
+                                            {isSubmittingAccount ? 'Creating...' : 'Confirm Creation'}
                                         </button>
                                     </div>
                                 )}
@@ -2802,7 +2805,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                 <h3 className="text-xl font-bold text-slate-900 mb-2">Transaction Successful</h3>
                                 <p className="text-slate-500 mb-6">Recorded {formatCurrency(transactionSuccess.amount)} {transactionSuccess.type} to {transactionSuccess.accountType}.</p>
                                 <div className="flex flex-col gap-3">
-                                    <button onClick={handlePrintSuccessReceipt} className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center justify-center gap-2"><Printer size={18} /> Print Receipt</button>
+                                    <button onClick={handlePrintRegReceipt} className="w-full py-2 bg-blue-600 text-white rounded-lg font-bold flex items-center justify-center gap-2"><Printer size={18} /> Print Receipt</button>
                                     <button onClick={closeTransModal} className="w-full py-2 bg-slate-100 text-slate-700 rounded-lg font-medium">Close</button>
                                 </div>
                             </div>
@@ -2978,8 +2981,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                         <p className="text-[10px] text-slate-500 mt-1">Format: DD/MM/YYYY • Minimum: 22/10/2025</p>
                                     </div>
 
-                                    <button type="submit" className="w-full py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2">
-                                        <Check size={18} /> Complete Transaction
+                                    <button type="submit" disabled={isSubmittingTransaction} className="w-full py-3 bg-slate-900 text-white font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2 disabled:opacity-50">
+                                        {isSubmittingTransaction ? <RotateCcw className="animate-spin" size={18} /> : <Check size={18} />}
+                                        {isSubmittingTransaction ? 'Processing...' : 'Complete Transaction'}
                                     </button>
                                 </form>
                             </>
@@ -3143,8 +3147,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                 </div>
                             )}
 
-                            <button onClick={submitActivation} className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-lg mt-4">
-                                Confirm & Activate
+                            <button onClick={submitActivation} disabled={isActivating} className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-lg mt-4 disabled:opacity-50">
+                                {isActivating ? 'Activating...' : 'Activate Membership & Pay Fees'}
                             </button>
                         </div>
                     </div>
