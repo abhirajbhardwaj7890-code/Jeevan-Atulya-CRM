@@ -933,13 +933,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         <head>
           <title>Registration Receipt</title>
           <style>
-            @page { size: landscape; margin: 5mm; }
+            @page { size: portrait; margin: 4mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
-            .receipt-container { display: flex; flex-direction: row; gap: 10mm; width: 100%; justify-content: space-between; }
-            .receipt-copy-box { width: calc(50% - 6mm); border-right: 1.5px dashed #444; padding-right: 6mm; }
-            .receipt-copy-box:last-child { border-right: none; padding-right: 0; padding-left: 6mm; }
+            .receipt-container { display: flex; flex-direction: row; gap: 4mm; width: 100%; justify-content: space-between; }
+            .receipt-copy-box { width: 48%; border-right: 1px dashed #444; padding-right: 2mm; }
+            .receipt-copy-box:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
             
-            .receipt-box { padding: 8px; display: flex; flex-direction: column; min-height: 125mm; position:relative; border: 1.5px solid #000; width: 100%; }
+            .receipt-box { padding: 6px; display: flex; flex-direction: column; min-height: 135mm; position:relative; border: 1.5px solid #000; width: 100%; box-sizing: border-box; }
             
             .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
             
@@ -1170,13 +1170,13 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
       <head>
         <title>Receipt ${tx.id}</title>
         <style>
-          @page { size: landscape; margin: 5mm; }
+          @page { size: portrait; margin: 4mm; }
           body { font-family: Arial, sans-serif; font-size: 11px; padding: 0; margin: 0; }
-          .page-container { display: flex; flex-direction: row; width: 100%; gap: 10mm; justify-content: space-between; }
-          .receipt-copy { width: calc(50% - 6mm); border-right: 1.5px dashed #444; padding-right: 6mm; }
-          .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 6mm; }
+          .page-container { display: flex; flex-direction: row; width: 100%; gap: 4mm; justify-content: space-between; }
+          .receipt-copy { width: 48%; border-right: 1px dashed #444; padding-right: 2mm; }
+          .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
           
-          .receipt-box { border: 1.5px solid #000; padding: 15px; background: #fff; position: relative; min-height: 110mm; width: 100%; }
+          .receipt-box { border: 1.5px solid #000; padding: 12px; background: #fff; position: relative; min-height: 115mm; width: 100%; box-sizing: border-box; }
           
           /* RD Receipt Styles */
           .rd-receipt { padding: 10px; font-family: 'Courier New', Courier, monospace; }

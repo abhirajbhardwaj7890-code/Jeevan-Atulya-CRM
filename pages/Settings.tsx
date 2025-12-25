@@ -723,14 +723,29 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                                 <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                                     <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1">
-                                        <Smartphone size={14} /> Device Configuration
+                                        <Smartphone size={14} /> Device & Gateway Configuration
                                     </h4>
                                     <div className="space-y-3">
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-600 mb-1">Gateway URL (from Android App)</label>
+                                            <label className="block text-xs font-medium text-slate-600 mb-1">Gateway Provider</label>
+                                            <select
+                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                value={form.messaging?.provider || 'None'}
+                                                onChange={(e) => setForm({
+                                                    ...form,
+                                                    messaging: { ...form.messaging!, provider: e.target.value as any }
+                                                })}
+                                            >
+                                                <option value="None">None</option>
+                                                <option value="AndroidGateway">Android App Gateway (GET)</option>
+                                                <option value="SMSGate">SMSGate Local API (POST)</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-medium text-slate-600 mb-1">Gateway URL</label>
                                             <input
                                                 type="text"
-                                                placeholder="http://192.168.1.5:8080/send"
+                                                placeholder={form.messaging?.provider === 'SMSGate' ? 'http://192.168.1.3:8080/v1/message' : 'http://192.168.1.5:8080/send'}
                                                 className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
                                                 value={form.messaging?.url || ''}
                                                 onChange={(e) => setForm({
@@ -739,20 +754,53 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 })}
                                             />
                                         </div>
+
+                                        {form.messaging?.provider === 'AndroidGateway' && (
+                                            <div>
+                                                <label className="block text-xs font-medium text-slate-600 mb-1">API Key / Access Key</label>
+                                                <input
+                                                    type="password"
+                                                    className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                    value={form.messaging?.apiKey || ''}
+                                                    onChange={(e) => setForm({
+                                                        ...form,
+                                                        messaging: { ...form.messaging!, apiKey: e.target.value }
+                                                    })}
+                                                />
+                                            </div>
+                                        )}
+
+                                        {form.messaging?.provider === 'SMSGate' && (
+                                            <div className="grid grid-cols-2 gap-3">
+                                                <div>
+                                                    <label className="block text-xs font-medium text-slate-600 mb-1">Username</label>
+                                                    <input
+                                                        type="text"
+                                                        className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                        value={form.messaging?.username || ''}
+                                                        onChange={(e) => setForm({
+                                                            ...form,
+                                                            messaging: { ...form.messaging!, username: e.target.value }
+                                                        })}
+                                                    />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-medium text-slate-600 mb-1">Password</label>
+                                                    <input
+                                                        type="password"
+                                                        className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                                        value={form.messaging?.password || ''}
+                                                        onChange={(e) => setForm({
+                                                            ...form,
+                                                            messaging: { ...form.messaging!, password: e.target.value }
+                                                        })}
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-600 mb-1">API Key / Key</label>
-                                            <input
-                                                type="password"
-                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
-                                                value={form.messaging?.apiKey || ''}
-                                                onChange={(e) => setForm({
-                                                    ...form,
-                                                    messaging: { ...form.messaging!, apiKey: e.target.value }
-                                                })}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-600 mb-1">Office Phone Number (Sender)</label>
+                                            <label className="block text-xs font-medium text-slate-600 mb-1">Office Phone Number (Sender/Test)</label>
                                             <input
                                                 type="text"
                                                 className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
@@ -784,13 +832,23 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                     <p className="text-xs text-slate-500 font-medium">Test Connection</p>
                                     <button
                                         onClick={async () => {
-                                            if (!form.messaging?.url || !form.messaging?.apiKey || !form.messaging?.officePhoneNumber) {
-                                                alert("Please fill in URL, API Key, and Office Phone before testing.");
+                                            const m = form.messaging;
+                                            if (!m?.url || !m?.officePhoneNumber) {
+                                                alert("Please fill in URL and Office Phone before testing.");
                                                 return;
                                             }
-                                            const success = await MessagingService.sendMessage(form, form.messaging.officePhoneNumber, MessagingService.formatTestMessage());
-                                            if (success) alert("Test message sent! Check your office phone.");
-                                            else alert("Failed to send test message. Check gateway URL and Key.");
+                                            if (m.provider === 'AndroidGateway' && !m.apiKey) {
+                                                alert("Please fill in API Key for Android Gateway.");
+                                                return;
+                                            }
+                                            if (m.provider === 'SMSGate' && (!m.username || !m.password)) {
+                                                alert("Please fill in Username and Password for SMSGate.");
+                                                return;
+                                            }
+
+                                            const success = await MessagingService.sendMessage(form, m.officePhoneNumber, MessagingService.formatTestMessage());
+                                            if (success) alert("Test message sent! Check your phone.");
+                                            else alert("Failed to send test message. Check configuration and network.");
                                         }}
                                         className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold transition-colors"
                                     >

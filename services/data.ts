@@ -502,6 +502,7 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             if (dbSettings.interest_rates) settings.interestRates = dbSettings.interest_rates;
             if (dbSettings.late_payment_fine !== undefined) settings.latePaymentFine = dbSettings.late_payment_fine;
             if (dbSettings.grace_period_days !== undefined) settings.gracePeriodDays = dbSettings.grace_period_days;
+            if (dbSettings.messaging) settings.messaging = dbSettings.messaging;
 
             // Fallback: Check if it's the old key-value format (array of {key, value} objects)
             // This handles the case where the table might still be using the old schema or data migration hasn't happened

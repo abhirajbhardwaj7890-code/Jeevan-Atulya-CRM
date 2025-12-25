@@ -50,9 +50,11 @@ export interface AppSettings {
   };
   messaging?: {
     enabled: boolean;
-    provider: 'AndroidGateway' | 'None';
+    provider: 'AndroidGateway' | 'SMSGate' | 'None';
     url: string;
     apiKey: string;
+    username?: string;
+    password?: string;
     officePhoneNumber: string;
   };
 }

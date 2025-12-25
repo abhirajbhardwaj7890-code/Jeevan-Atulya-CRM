@@ -22,25 +22,59 @@ export const MessagingService = {
             return false;
         }
 
-        // Android Gateway API typical format (e.g., Simple SMS Gateway)
-        // URL: http://192.168.1.5:8080/send
-        // Query Params: phone, message, key
-        try {
-            const response = await fetch(`${settings.messaging.url}?phone=${cleanPhone}&message=${encodeURIComponent(message)}&key=${settings.messaging.apiKey}`, {
-                method: 'GET', // Most Android Gateways use simple GET/POST
-            });
+        if (settings.messaging.provider === 'AndroidGateway') {
+            // Android Gateway API typical format (e.g., Simple SMS Gateway)
+            // URL: http://192.168.1.5:8080/send
+            // Query Params: phone, message, key
+            try {
+                const response = await fetch(`${settings.messaging.url}?phone=${cleanPhone}&message=${encodeURIComponent(message)}&key=${settings.messaging.apiKey}`, {
+                    method: 'GET',
+                });
 
-            if (response.ok) {
-                console.log(`Message sent successfully to ${cleanPhone}`);
-                return true;
-            } else {
-                console.error('Failed to send message:', response.statusText);
+                if (response.ok) {
+                    console.log(`Message sent successfully to ${cleanPhone}`);
+                    return true;
+                } else {
+                    console.error('Failed to send message:', response.statusText);
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error sending message:', error);
                 return false;
             }
-        } catch (error) {
-            console.error('Error sending message:', error);
-            return false;
+        } else if (settings.messaging.provider === 'SMSGate') {
+            // SMSGate Local API format
+            // URL: http://192.168.1.3:8080/v1/message
+            // Headers: Authorization: Basic Base64(user:pass)
+            // JSON Body: [{ phone: "...", message: "..." }]
+            try {
+                const authHeader = btoa(`${settings.messaging.username || ''}:${settings.messaging.password || ''}`);
+                const response = await fetch(settings.messaging.url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Basic ${authHeader}`
+                    },
+                    body: JSON.stringify([{
+                        phone: cleanPhone,
+                        message: message
+                    }])
+                });
+
+                if (response.ok) {
+                    console.log(`SMSGate: Message sent successfully to ${cleanPhone}`);
+                    return true;
+                } else {
+                    console.error('SMSGate: Failed to send message:', response.statusText);
+                    return false;
+                }
+            } catch (error) {
+                console.error('SMSGate: Error sending message:', error);
+                return false;
+            }
         }
+
+        return false;
     },
 
     /**
