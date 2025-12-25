@@ -779,11 +779,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const dateStr = formatDate(initTx?.date || acc.openingDate || new Date().toISOString());
 
         // Payment Mode String for the certificate
-        let paymentModeStr = initTx?.paymentMethod || 'Cash';
+        let paymentModeStr: string = initTx?.paymentMethod || 'Cash';
         if (initTx?.paymentMethod === 'Both') {
-            paymentModeStr = `Cash (₹${initTx.cashAmount || 0}) Online (₹${initTx.onlineAmount || 0})`;
+            paymentModeStr = `Cash (₹${initTx?.cashAmount || 0}) Online (₹${initTx?.onlineAmount || 0})`;
         } else if (initTx?.paymentMethod === 'Online' && initTx?.utrNumber) {
-            paymentModeStr = `Online (UTR:${initTx.utrNumber})`;
+            paymentModeStr = `Online (UTR:${initTx?.utrNumber})`;
         } else if (initTx?.paymentMethod === 'Online') {
             paymentModeStr = `Online`;
         }
