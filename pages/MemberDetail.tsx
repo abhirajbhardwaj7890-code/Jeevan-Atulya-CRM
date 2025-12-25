@@ -102,6 +102,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         date: string;
         balanceAfter: number;
         description: string;
+        paymentMethod: string;
+        cashAmount?: number;
+        onlineAmount?: number;
+        utrNumber?: string;
     } | null>(null);
 
     // Edit Member Modal State
@@ -770,7 +774,19 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const handlePrintFDCertificate = (acc: Account) => {
         if (acc.type !== AccountType.FIXED_DEPOSIT) return;
 
-        const dateStr = formatDate(acc.transactions[0]?.date || new Date().toISOString());
+        // Safer way to find the initial deposit transaction
+        const initTx = acc.transactions.find(t => t.category === 'Opening Balance' || t.description.includes('Deposit')) || acc.transactions[0];
+        const dateStr = formatDate(initTx?.date || acc.openingDate || new Date().toISOString());
+
+        // Payment Mode String for the certificate
+        let paymentModeStr = initTx?.paymentMethod || 'Cash';
+        if (initTx?.paymentMethod === 'Both') {
+            paymentModeStr = `Cash (₹${initTx.cashAmount || 0}) Online (₹${initTx.onlineAmount || 0})`;
+        } else if (initTx?.paymentMethod === 'Online' && initTx?.utrNumber) {
+            paymentModeStr = `Online (UTR:${initTx.utrNumber})`;
+        } else if (initTx?.paymentMethod === 'Online') {
+            paymentModeStr = `Online`;
+        }
         const termYears = (acc.termMonths || 12) / 12;
         const rate = acc.interestRate || 0;
         const maturityAmt = Math.round(acc.balance * Math.pow(1 + (rate / 100), termYears));
@@ -809,7 +825,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     <h1>JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</h1>
                     <p>E-287/8, PUL PEHLADPUR, DELHI-110044</p>
                 </div>
-                <div class="gray-bar"><span>REG.NO-10954</span><span style="border: 1px solid #000; padding: 2px 10px;">${acc.transactions[0]?.paymentMethod || 'Cash'}</span></div>
+                <div class="gray-bar"><span>REG.NO-10954</span><span style="border: 1px solid #000; padding: 2px 10px;">${paymentModeStr}</span></div>
                 <div class="info-section">
                     <div class="info-column">
                         <div class="info-row"><span class="label">Certificate No.</span><span class="value">: ${certNo}</span></div>
@@ -1392,7 +1408,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 accountType: account.type,
                 date: new Date().toLocaleString(),
                 balanceAfter: newBal,
-                description: transForm.description
+                description: transForm.description,
+                paymentMethod: transForm.paymentMethod,
+                cashAmount: transForm.paymentMethod === 'Both' ? parseFloat(transForm.cashAmount) : undefined,
+                onlineAmount: transForm.paymentMethod === 'Both' ? parseFloat(transForm.onlineAmount) : undefined,
+                utrNumber: transForm.utrNumber
             });
             setTransForm({
                 accountId: accounts[0]?.id || '',
@@ -1421,7 +1441,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 type: transactionSuccess.type as any,
                 date: new Date().toISOString(),
                 description: transactionSuccess.description,
-                paymentMethod: 'Cash'
+                paymentMethod: transactionSuccess.paymentMethod as any,
+                cashAmount: transactionSuccess.cashAmount,
+                onlineAmount: transactionSuccess.onlineAmount,
+                utrNumber: transactionSuccess.utrNumber
             }, acc, transactionSuccess.balanceAfter);
         }
     };
@@ -2409,7 +2432,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                 ))}
                             </div>
 
-                            <form onSubmit={submitEditAccount} className="space-y-4">
+                            <form onSubmit={submitAccount} className="space-y-4">
                                 {accountWizardStep === 1 && (
                                     <div className="animate-fade-in space-y-4">
                                         <div>
