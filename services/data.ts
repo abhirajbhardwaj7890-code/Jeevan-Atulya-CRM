@@ -1,5 +1,6 @@
 import { Member, Account, AccountType, AccountStatus, Interaction, LoanType, Branch, Agent, Notification, Guarantor, AppSettings, Transaction, LedgerEntry, MemberGroup } from '../types';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
+import { parseSafeDate } from './utils';
 
 export const DEFAULT_SETTINGS: AppSettings = {
     latePaymentFine: 500,
@@ -44,8 +45,8 @@ export const mapMemberFromDB = (m: any): Member => ({
     city: m.city,
     pinCode: m.pin_code,
     residenceType: m.residence_type,
-    joinDate: m.join_date,
-    dateOfBirth: m.date_of_birth,
+    joinDate: parseSafeDate(m.join_date),
+    dateOfBirth: parseSafeDate(m.date_of_birth),
     status: m.status,
     riskScore: m.risk_score,
     avatarUrl: m.avatar_url || `https://ui-avatars.com/api/?name=${m.full_name.replace(' ', '+')}&background=random`,
@@ -74,8 +75,8 @@ const mapMemberToDB = (m: Member) => ({
     city: m.city,
     pin_code: m.pinCode,
     residence_type: m.residenceType,
-    join_date: m.joinDate,
-    date_of_birth: m.dateOfBirth || null,
+    join_date: parseSafeDate(m.joinDate),
+    date_of_birth: m.dateOfBirth ? parseSafeDate(m.dateOfBirth) : null,
     status: m.status,
     risk_score: m.riskScore ?? 0,
     branch_id: m.branchId ?? null,
@@ -131,8 +132,8 @@ export const mapAccountFromDB = (a: any): Account => {
         rdFrequency: a.rd_frequency,
         guarantors: a.guarantors || [],
         lowBalanceAlertThreshold: a.low_balance_alert_threshold,
-        createdAt: a.created_at,
-        openingDate: a.opening_date,
+        createdAt: parseSafeDate(a.created_at),
+        openingDate: parseSafeDate(a.opening_date),
         lastInterestPostDate: a.last_interest_post_date,
         // Derive missing values from transactions if columns don't exist in DB
         emi: a.emi ? Number(a.emi) : (a.transactions?.[0]?.amount || 0),
@@ -140,7 +141,7 @@ export const mapAccountFromDB = (a: any): Account => {
         maturityProcessed: a.maturity_processed || false,
         transactions: a.transactions ? a.transactions.map((t: any) => ({
             id: t.id,
-            date: t.date,
+            date: parseSafeDate(t.date),
             dueDate: t.due_date,
             amount: Number(t.amount),
             type: t.type,
@@ -192,7 +193,7 @@ const mapAccountToDB = (a: Account) => ({
     interest_rate: a.interestRate ?? null,
     initial_interest_rate: a.initialInterestRate ?? null,
     initial_amount: a.initialAmount ?? a.originalAmount ?? null,
-    maturity_date: a.maturityDate || null, // Convert empty string to null
+    maturity_date: a.maturityDate ? parseSafeDate(a.maturityDate) : null, // Convert empty string to null
     loan_type: a.loanType ?? null,
     currency: a.currency,
     term_months: a.termMonths ?? null,
@@ -204,14 +205,14 @@ const mapAccountToDB = (a: Account) => ({
     // Safely include these if they exist in schema, but we don't strictly rely on them now
     emi: a.emi ?? null,
     original_amount: a.originalAmount ?? null,
-    opening_date: a.openingDate || null,
-    last_interest_post_date: a.lastInterestPostDate || null
+    opening_date: a.openingDate ? parseSafeDate(a.openingDate) : null,
+    last_interest_post_date: a.lastInterestPostDate ? parseSafeDate(a.lastInterestPostDate) : null
 });
 
 export const mapInteractionFromDB = (i: any): Interaction => ({
     id: i.id,
     memberId: i.member_id,
-    date: i.date,
+    date: parseSafeDate(i.date),
     staffName: i.staff_name,
     type: i.type,
     notes: i.notes,
@@ -221,7 +222,7 @@ export const mapInteractionFromDB = (i: any): Interaction => ({
 const mapInteractionToDB = (i: Interaction) => ({
     id: i.id,
     member_id: i.memberId,
-    date: i.date,
+    date: parseSafeDate(i.date),
     staff_name: i.staffName,
     type: i.type,
     notes: i.notes,
@@ -230,7 +231,7 @@ const mapInteractionToDB = (i: Interaction) => ({
 
 export const mapLedgerFromDB = (l: any): LedgerEntry => ({
     id: l.id,
-    date: l.date,
+    date: parseSafeDate(l.date),
     description: l.description,
     amount: Number(l.amount),
     type: l.type,
@@ -243,7 +244,7 @@ export const mapLedgerFromDB = (l: any): LedgerEntry => ({
 const mapLedgerToDB = (l: LedgerEntry) => ({
     id: l.id,
     member_id: l.memberId || null,
-    date: l.date,
+    date: parseSafeDate(l.date),
     description: l.description,
     amount: l.amount,
     type: l.type,

@@ -2,6 +2,7 @@
 import React from 'react';
 import { Member } from '../types';
 import { Phone, Mail, Calendar, AlertTriangle, CheckSquare, Square, User, Clock } from 'lucide-react';
+import { formatDate } from '../services/utils';
 
 interface MemberCardProps {
   member: Member;
@@ -77,7 +78,7 @@ export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick, selecte
           </div>
           <div className="flex items-center gap-1.5" title="Last Interaction">
             <Clock size={12} className="text-slate-400" />
-            <span className="truncate">{lastInteractionDate || 'No Activity'}</span>
+            <span className="truncate">{lastInteractionDate ? formatDate(lastInteractionDate) : 'No Activity'}</span>
           </div>
         </div>
       </div>

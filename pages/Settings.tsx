@@ -3,6 +3,7 @@ import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpse
 import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
 import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X, MessageSquare, Smartphone, Play } from 'lucide-react';
 import { MessagingService } from '../services/messaging';
+import { parseSafeDate, formatDate } from '../services/utils';
 import * as XLSX from 'xlsx';
 
 interface SettingsPageProps {
@@ -1283,14 +1284,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                         if (!confirm("This will scan for transactions with ID 'TX-OPENING-*' and fix their dates if they don't match the member join date. Continue?")) return;
                                         setIsRepairing(true);
                                         try {
+
+
                                             const fixTxs: { transaction: Transaction, accountId: string }[] = [];
                                             const fixAccs: Account[] = [];
 
                                             accounts.forEach(acc => {
-                                                // 1. Find the opening transaction (either by ID or by category/order)
                                                 let openingTx = (acc.transactions || []).find(t => t.id === `TX-OPENING-${acc.id}`);
                                                 if (!openingTx) {
-                                                    // Fallback: Find the oldest transaction with Opening Balance category
                                                     openingTx = (acc.transactions || [])
                                                         .filter(t => t.category === 'Opening Balance' || t.description?.includes('Initial Deposit') || t.category === 'Loan Disbursement')
                                                         .sort((a, b) => a.date.localeCompare(b.date))[0];
@@ -1298,27 +1299,35 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                                                 if (openingTx) {
                                                     const member = members.find(m => m.id === acc.memberId);
-                                                    // Calculate what the date SHOULD be
-                                                    const correctDate = acc.openingDate && acc.openingDate !== new Date().toISOString().split('T')[0]
-                                                        ? acc.openingDate
-                                                        : (member?.joinDate || acc.createdAt || new Date().toISOString().split('T')[0]);
-                                                    let needsUpdate = false;
 
-                                                    // Check transaction date
-                                                    if (openingTx.date !== correctDate) {
-                                                        console.log(`Fixing transaction ${openingTx.id}: ${openingTx.date} -> ${correctDate}`);
-                                                        fixTxs.push({
-                                                            transaction: { ...openingTx, date: correctDate },
-                                                            accountId: acc.id
-                                                        });
-                                                        needsUpdate = true;
+                                                    // Normalize dates to ISO for comparison
+                                                    const currentTxDateISO = parseSafeDate(openingTx.date);
+                                                    const accountOpeningDateISO = parseSafeDate(acc.openingDate);
+                                                    const memberJoinDateISO = parseSafeDate(member?.joinDate);
+                                                    const accountCreatedAtISO = parseSafeDate(acc.createdAt);
+                                                    const todayISO = new Date().toISOString().split('T')[0];
+
+                                                    // Calculate the "Correct" ISO Date
+                                                    // Rule: If account date is today, use member join date
+                                                    let correctDateISO = accountOpeningDateISO;
+                                                    if (accountOpeningDateISO === todayISO && memberJoinDateISO !== todayISO) {
+                                                        correctDateISO = memberJoinDateISO;
+                                                    } else if (!acc.openingDate) {
+                                                        correctDateISO = memberJoinDateISO || accountCreatedAtISO;
                                                     }
 
-                                                    // Check account opening date
-                                                    if (acc.openingDate !== correctDate) {
-                                                        console.log(`Fixing account ${acc.accountNumber} opening date: ${acc.openingDate} -> ${correctDate}`);
-                                                        fixAccs.push({ ...acc, openingDate: correctDate });
-                                                        needsUpdate = true;
+                                                    // Apply fix if mismatch found
+                                                    if (currentTxDateISO !== correctDateISO) {
+                                                        console.log(`Fixing transaction ${openingTx.id}: ${openingTx.date} (${currentTxDateISO}) -> ${correctDateISO}`);
+                                                        fixTxs.push({
+                                                            transaction: { ...openingTx, date: correctDateISO },
+                                                            accountId: acc.id
+                                                        });
+                                                    }
+
+                                                    if (accountOpeningDateISO !== correctDateISO) {
+                                                        console.log(`Fixing account ${acc.accountNumber} opening date: ${acc.openingDate} (${accountOpeningDateISO}) -> ${correctDateISO}`);
+                                                        fixAccs.push({ ...acc, openingDate: correctDateISO });
                                                     }
                                                 }
                                             });

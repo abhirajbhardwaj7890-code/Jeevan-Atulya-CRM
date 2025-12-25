@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, LoanType, MemberDocument, UserRole, AppSettings, Guarantor, Nominee, LedgerEntry, Agent } from '../types';
 import { generateMemberSummary, analyzeFinancialHealth, draftInteractionNote, calculateMemberRisk } from '../services/gemini';
+import { formatDate, parseSafeDate } from '../services/utils';
 import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search, DollarSign, XCircle } from 'lucide-react';
 
 interface MemberDetailProps {
@@ -28,12 +29,6 @@ const formatCurrency = (amount: number) => {
         currency: 'INR',
         maximumFractionDigits: 0
     }).format(amount);
-};
-
-const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '-';
-    const date = new Date(dateStr);
-    return isNaN(date.getTime()) ? dateStr : date.toLocaleDateString('en-GB');
 };
 
 // Helper Functions for Account Analysis

@@ -4,6 +4,7 @@ import {
     ArrowLeft, Printer, RotateCcw, Check, Search, FileText,
     Settings, MousePointer2, ChevronDown, ChevronUp, AlignVerticalSpaceAround, CheckSquare, Square, FilePlus
 } from 'lucide-react';
+import { formatDate } from '../services/utils';
 
 interface PassbookPageProps {
     member: Member;
@@ -12,15 +13,7 @@ interface PassbookPageProps {
     onUpdateMember: (member: Member) => void;
 }
 
-const formatDate = (dateStr?: string) => {
-    if (!dateStr) return '-';
-    const date = new Date(dateStr);
-    if (isNaN(date.getTime())) return dateStr;
-    const day = String(date.getDate()).padStart(2, '0');
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const year = String(date.getFullYear()).slice(-2);
-    return `${day}/${month}/${year}`;
-};
+
 
 const abbreviateParticulars = (text: string) => {
     return text

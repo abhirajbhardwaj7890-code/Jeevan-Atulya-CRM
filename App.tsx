@@ -14,6 +14,7 @@ import { Accounting } from './pages/Accounting';
 import { PassbookPage } from './pages/PassbookPage';
 import { Groups } from './pages/Groups';
 import { MessagingService } from './services/messaging';
+import { parseSafeDate, formatDate } from './services/utils';
 import {
     loadData,
     upsertMember,
@@ -402,7 +403,7 @@ const App: React.FC = () => {
                 // 1. Admission Fees (Income)
                 const incomeEntry: LedgerEntry = {
                     id: `LDG-REG-INC-${Date.now()}`,
-                    date: new Date().toISOString().split('T')[0],
+                    date: parseSafeDate(newMember.joinDate),
                     description: `Registration Fee - ${newMember.fullName}`,
                     amount: admissionIncome,
                     type: 'Income',
@@ -415,7 +416,7 @@ const App: React.FC = () => {
                 if (depositInflow > 0) {
                     const depositEntry: LedgerEntry = {
                         id: `LDG-REG-DEP-${Date.now()}`,
-                        date: new Date().toISOString().split('T')[0],
+                        date: parseSafeDate(newMember.joinDate),
                         description: `Initial Deposit (SM/CD) - ${newMember.fullName}`,
                         amount: depositInflow,
                         type: 'Income', // Recorded as Inflow
@@ -446,8 +447,8 @@ const App: React.FC = () => {
     const handleAddAccount = async (memberId: string, accountData: Partial<Account>) => {
         if (!accountData.type) return;
 
-        // Extract opening date (use accountData.openingDate or default to today)
-        const openingDate = accountData.openingDate || new Date().toISOString().split('T')[0];
+        // Extract opening date (normalize to ISO)
+        const openingDate = parseSafeDate(accountData.openingDate);
 
         const currentCount = accounts.filter(a => a.memberId === memberId).length;
         const newAccount = createAccount(memberId, accountData.type, accountData.balance || 0, accountData.loanType, {
@@ -578,9 +579,12 @@ const App: React.FC = () => {
 
         // Persist
         try {
-            await upsertTransaction(newTransaction, accountId);
-            await upsertAccount(updatedAccount);
-            await upsertLedgerEntry(newLedgerEntry);
+            const txToSave = { ...newTransaction, date: parseSafeDate(newTransaction.date) };
+            await upsertTransaction(txToSave, accountId);
+            const accToSave = { ...updatedAccount, openingDate: parseSafeDate(updatedAccount.openingDate) };
+            await upsertAccount(accToSave);
+            const ledgerToSave = { ...newLedgerEntry, date: parseSafeDate(newLedgerEntry.date) };
+            await upsertLedgerEntry(ledgerToSave);
         } catch (e) {
             console.error("Failed to persist transaction", e);
         }

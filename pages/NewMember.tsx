@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { ArrowLeft, User, Phone, Wallet, CheckCircle, Printer, X, Save, Users, Loader, AlertCircle, Search } from 'lucide-react';
 import { Member, AccountType, MemberDocument, AccountStatus, AppSettings, Agent } from '../types';
 import { createAccount } from '../services/data';
+import { formatDate } from '../services/utils';
 
 interface NewMemberProps {
     onCancel: () => void;
@@ -261,7 +262,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
 
     const handlePrintReceipt = () => {
         const amountInWords = numberToWords(totalAmount);
-        const dateStr = new Date().toLocaleDateString('en-GB');
+        const dateStr = formatDate(new Date());
 
         // Use Member ID if generated, else fallback
         const memberId = createdMemberData?.member.id || 'New Member';

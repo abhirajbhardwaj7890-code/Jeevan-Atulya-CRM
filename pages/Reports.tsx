@@ -3,6 +3,7 @@ import React, { useState, useMemo } from 'react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line, Legend } from 'recharts';
 import { Account, Member, AccountType, LoanType, LedgerEntry, Agent } from '../types';
 import { Download, Users, TrendingUp, AlertTriangle, ShieldCheck, Filter, Upload } from 'lucide-react';
+import { formatDate, parseSafeDate } from '../services/utils';
 
 interface ReportsProps {
     accounts: Account[];
@@ -96,7 +97,7 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger, age
         const url = URL.createObjectURL(blob);
         const link = document.createElement('a');
         link.setAttribute('href', url);
-        link.setAttribute('download', `financial_report_${new Date().toISOString().split('T')[0]}.csv`);
+        link.setAttribute('download', `financial_report_${parseSafeDate(new Date().toISOString())}.csv`);
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -438,7 +439,7 @@ const DayWiseCollectionModal: React.FC<DayWiseModalProps> = ({ onClose, accounts
                 <body>
                     <div class="header">
                         <h1 style="margin:0; font-size: 24px;">Jeevan Atulya</h1>
-                        <p style="margin:5px 0; color: #666;">Daily Collection Report - ${new Date(selectedDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
+                        <p style="margin:5px 0; color: #666;">Daily Collection Report - ${formatDate(selectedDate)}</p>
                     </div>
                     <div class="summary">
                         <div class="stat-card">
