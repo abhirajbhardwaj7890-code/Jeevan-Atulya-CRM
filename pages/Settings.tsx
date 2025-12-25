@@ -712,7 +712,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const analyzeAutoInterest = () => {
         let count = 0;
         accounts.forEach(acc => {
-            count += acc.transactions.filter(t => t.id && t.id.startsWith('TX-INT-AUTO-')).length;
+            count += acc.transactions.filter(t =>
+                (t.id && t.id.startsWith('TX-INT-AUTO-')) ||
+                (t.description && t.description.includes('Monthly Interest (Compounding)'))
+            ).length;
         });
         setInterestCleanupCount(count);
     };
@@ -728,7 +731,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
             for (const acc of accounts) {
                 const originalLen = acc.transactions.length;
                 // Filter out auto-interest transactions
-                const cleanTransactions = acc.transactions.filter(t => !t.id.startsWith('TX-INT-AUTO-'));
+                const cleanTransactions = acc.transactions.filter(t =>
+                    !(t.id && t.id.startsWith('TX-INT-AUTO-')) &&
+                    !(t.description && t.description.includes('Monthly Interest (Compounding)'))
+                );
 
                 if (cleanTransactions.length !== originalLen) {
                     // Recalculate balance if needed? 
@@ -738,7 +744,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     // Savings Interest (Credit) -> Balance += Interest. So we must SUBTRACT it back.
 
                     let balanceAdjustment = 0;
-                    const removedTxs = acc.transactions.filter(t => t.id.startsWith('TX-INT-AUTO-'));
+                    const removedTxs = acc.transactions.filter(t =>
+                        (t.id && t.id.startsWith('TX-INT-AUTO-')) ||
+                        (t.description && t.description.includes('Monthly Interest (Compounding)'))
+                    );
                     removedTxs.forEach(t => {
                         if (t.type === 'credit') balanceAdjustment -= t.amount;
                         if (t.type === 'debit') balanceAdjustment += t.amount; // Should decrease loan balance? 
@@ -1532,7 +1541,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             <div>
                                 <h4 className="font-bold text-slate-900 text-lg">Cleanup Auto-Interest</h4>
                                 <p className="text-slate-500 text-xs mb-4">
-                                    Mass delete all automatically generated interest transactions (tagged 'TX-INT-AUTO').
+                                    Mass delete all automatically generated interest transactions (tagged 'TX-INT-AUTO' or labeled 'Monthly Interest (Compounding)').
                                 </p>
 
                                 <div className="flex items-center gap-4">
