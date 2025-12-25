@@ -1580,6 +1580,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 accountNumber: 'Generated...',
                 amount: openingBalance
             });
+        } catch (error: any) {
+            console.error("Account creation failed:", error);
+            alert(`Failed to create account: ${error.message || "Unknown error"}`);
         } finally {
             setIsSubmittingAccount(false);
         }
