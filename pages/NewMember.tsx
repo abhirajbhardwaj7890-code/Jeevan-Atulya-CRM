@@ -19,6 +19,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
     const [step, setStep] = useState(1);
     const [showReceipt, setShowReceipt] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [registrationPlan, setRegistrationPlan] = useState<'Standard' | 'Basic'>('Standard');
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const [createdMemberData, setCreatedMemberData] = useState<{ member: Member, accounts: any[] } | null>(null);
 
@@ -44,7 +45,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         nomineeDob: '', // Changed from Age
         nomineePhone: '',
         nomineeAddress: '', // Added
-        // Fixed Fee Structure
+        // Fixed Fee Structure (Standard: 1550)
         buildingFund: 450,
         shareMoney: 400,
         compulsoryDeposit: 200,
@@ -54,6 +55,29 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         paymentMethod: 'Cash' as 'Cash' | 'Online' | 'Both',
         utrNumber: '' // Added for online payments
     });
+
+    const handlePlanChange = (plan: 'Standard' | 'Basic') => {
+        setRegistrationPlan(plan);
+        if (plan === 'Basic') {
+            setFormData(prev => ({
+                ...prev,
+                buildingFund: 0,
+                welfareFund: 0,
+                entryCharge: 100,
+                shareMoney: 400,
+                compulsoryDeposit: 200
+            }));
+        } else {
+            setFormData(prev => ({
+                ...prev,
+                buildingFund: 450,
+                welfareFund: 400,
+                entryCharge: 100,
+                shareMoney: 400,
+                compulsoryDeposit: 200
+            }));
+        }
+    };
 
     const [resolvedAgentName, setResolvedAgentName] = useState<string | null>(null);
     const [paymentSplit, setPaymentSplit] = useState({ cash: '', online: '' });
@@ -211,7 +235,13 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         }
 
         try {
+            // Calculate Admission Income based on plan
+            // Standard: 450 (Building) + 400 (Welfare) + 100 (Entry) = 950
+            // Basic: 100 (Entry)
+            const admissionIncome = (Number(formData.buildingFund) || 0) + (Number(formData.welfareFund) || 0) + (Number(formData.entryCharge) || 0);
+
             // Attempt to save to DB immediately. Pass 'false' to NOT navigate away yet.
+            // Note: handleAddMember in App.tsx needs to be updated to accept admissionIncome or we use finalTotal
             await onComplete(newMember, accounts, finalTotal, false);
 
             // Only if successful:
@@ -280,13 +310,14 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             { label: 'Admission Fee', val: Number(formData.entryCharge) },
             { label: 'Building Fund', val: Number(formData.buildingFund) },
             { label: 'Member Welfare Fund', val: Number(formData.welfareFund) },
-            { label: 'COMPULSARY DEPOSIT (1)', val: Number(formData.compulsoryDeposit) },
-            { label: 'SHARE MONEY (1)', val: Number(formData.shareMoney) },
+            { label: 'COMPULSARY DEPOSIT', val: Number(formData.compulsoryDeposit) },
+            { label: 'SHARE MONEY', val: Number(formData.shareMoney) },
         ];
 
+        const isBasicPlan = registrationPlan === 'Basic';
         // Compact Receipt Template matching the image provided
         const getReceiptHTML = (copyType: string) => `
-        <div class="receipt-box">
+        <div class="receipt-box ${isBasicPlan ? 'basic-plan' : ''}">
             <div class="header-top">
                 <span style="float:left">REG.NO-10954</span>
                 <span style="float:right">9911770293, 9911773542</span>
@@ -369,14 +400,20 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         <head>
           <title>Registration Receipt</title>
           <style>
-            @page { size: landscape; margin: 4mm; }
+            @page { size: portrait; margin: 4mm; }
             body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; margin: 0; padding: 0; color: #000; line-height: 1.2; }
-            table { width: 100%; border-collapse: collapse; }
-            td { width: 49%; vertical-align: top; padding: 0 4mm; }
-            td:first-child { border-right: 1px dashed #ccc; }
+            .receipt-container { display: flex; flex-direction: row; gap: 4mm; width: 100%; justify-content: space-between; }
+            .receipt-copy-box { width: 48%; border-right: 1px dashed #444; padding-right: 2mm; }
+            .receipt-copy-box:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
             
-            .receipt-box { padding: 5px; display: flex; flex-direction: column; min-height: 120mm; position:relative; }
+            .receipt-box { padding: 6px; display: flex; flex-direction: column; min-height: 135mm; position:relative; border: 1.5px solid #000; width: 100%; box-sizing: border-box; }
             
+            .receipt-box.basic-plan { min-height: 110mm; }
+            .receipt-box.basic-plan .p-body { min-height: 40px; }
+            .receipt-box.basic-plan .words { margin-top: 5px; }
+            .receipt-box.basic-plan .auth-for { margin-top: 10px; }
+            .receipt-box.basic-plan .footer-bottom { margin-top: 15px; }
+
             .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
             
             .info-grid { margin-top: 5px; }
@@ -401,12 +438,10 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
           </style>
         </head>
         <body>
-          <table>
-            <tr>
-              <td>${getReceiptHTML('MEMBER COPY')}</td>
-              <td>${getReceiptHTML('OFFICE COPY')}</td>
-            </tr>
-          </table>
+          <div class="receipt-container">
+            <div class="receipt-copy-box">${getReceiptHTML('MEMBER COPY')}</div>
+            <div class="receipt-copy-box">${getReceiptHTML('OFFICE COPY')}</div>
+          </div>
         </body>
         </html>
     `;
@@ -766,7 +801,25 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
                             </div>
                         ) : (
                             <>
-                                <h3 className="text-lg font-bold text-slate-900 mb-4">Initial Fees & Deposits</h3>
+                                <div className="flex justify-between items-center mb-4">
+                                    <h3 className="text-lg font-bold text-slate-900">Initial Fees & Deposits</h3>
+                                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePlanChange('Standard')}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${registrationPlan === 'Standard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            Standard (₹1550)
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handlePlanChange('Basic')}
+                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${registrationPlan === 'Basic' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                                        >
+                                            Basic (₹700)
+                                        </button>
+                                    </div>
+                                </div>
                                 <div className="bg-slate-50 p-4 rounded-xl space-y-3">
                                     {[
                                         { key: 'entryCharge', label: 'Admission Fee' },
@@ -774,7 +827,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
                                         { key: 'welfareFund', label: 'Member Welfare Fund' },
                                         { key: 'compulsoryDeposit', label: 'Compulsory Deposit (Refundable)', highlight: true },
                                         { key: 'shareMoney', label: 'Share Money (Refundable)', highlight: true },
-                                    ].map((item, idx) => (
+                                    ].filter(item => (formData as any)[item.key] > 0).map((item, idx) => (
                                         <div key={idx} className="flex justify-between items-center text-sm border-b border-slate-200 pb-2 last:border-0 last:pb-0">
                                             <span className={item.highlight ? 'font-bold text-slate-700 pt-2' : 'text-slate-600 pt-2'}>{item.label}</span>
                                             <div className="relative w-32">

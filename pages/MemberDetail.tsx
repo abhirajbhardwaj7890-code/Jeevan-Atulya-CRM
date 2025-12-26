@@ -185,8 +185,33 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         paymentMethod: 'Cash' as 'Cash' | 'Online' | 'Both',
         cashAmount: '',
         onlineAmount: '',
-        activationDate: new Date().toISOString().split('T')[0]
+        activationDate: new Date().toISOString().split('T')[0],
+        registrationPlan: 'Standard' as 'Standard' | 'Basic'
     });
+
+    const handleActivatePlanChange = (plan: 'Standard' | 'Basic') => {
+        if (plan === 'Basic') {
+            setActivateForm(prev => ({
+                ...prev,
+                registrationPlan: 'Basic',
+                buildingFund: 0,
+                welfareFund: 0,
+                entryCharge: 100,
+                shareMoney: 400,
+                compulsoryDeposit: 200
+            }));
+        } else {
+            setActivateForm(prev => ({
+                ...prev,
+                registrationPlan: 'Standard',
+                buildingFund: 450,
+                welfareFund: 400,
+                entryCharge: 100,
+                shareMoney: 400,
+                compulsoryDeposit: 200
+            }));
+        }
+    };
 
     // Loan Guarantor State
     const [guarantors, setGuarantors] = useState({
@@ -894,11 +919,41 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const shareAcc = accounts.find(a => a.type === AccountType.SHARE_CAPITAL);
         const cdAcc = accounts.find(a => a.type === AccountType.COMPULSORY_DEPOSIT);
 
-        const fees = { building: 450, welfare: 400, entry: 100 };
         const smAmount = shareAcc?.originalAmount ?? 400;
         const cdAmount = cdAcc?.originalAmount ?? 200;
 
-        const totalAmount = overrideAmount || (fees.building + fees.welfare + fees.entry + smAmount + cdAmount);
+        // If no override amount, try to calculate from accounts + default fees
+        // However, if it's a Basic plan, it should be 700. 
+        // We check if the member was recently activated or we can check the ledger.
+        let totalAmount = overrideAmount;
+
+        if (!totalAmount) {
+            // Check ledger for registration entries to determine the plan
+            let regEntries = (ledger || []).filter(l => l.memberId === member.id && (l.category === 'Admission Fees' || l.category === 'Admission Fees & Deposits'));
+
+            // Fallback for older entries missing memberId: check by description AND date
+            if (regEntries.length === 0) {
+                const joinDateStr = member.joinDate.split('T')[0];
+                regEntries = (ledger || []).filter(l =>
+                    l.description.includes(member.fullName) &&
+                    l.date.startsWith(joinDateStr) &&
+                    (l.category === 'Admission Fees' || l.category === 'Admission Fees & Deposits')
+                );
+            }
+
+            if (regEntries.length > 0) {
+                totalAmount = regEntries.reduce((sum, l) => sum + l.amount, 0);
+            } else {
+                // Fallback to Standard 1550
+                totalAmount = 1550;
+            }
+        }
+
+        const isBasicPlan = totalAmount === 700;
+        const fees = isBasicPlan
+            ? { building: 0, welfare: 0, entry: 100 }
+            : { building: 450, welfare: 400, entry: 100 };
+
         const amountInWords = numberToWords(totalAmount);
         const dateStr = formatDate(member.joinDate);
         const numId = member.id.replace(/\D/g, '');
@@ -920,12 +975,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             { label: 'Admission Fee', val: fees.entry },
             { label: 'Building Fund', val: fees.building },
             { label: 'Member Welfare Fund', val: fees.welfare },
-            { label: 'COMPULSARY DEPOSIT (1)', val: cdAmount },
-            { label: 'SHARE MONEY (1)', val: smAmount },
+            { label: 'COMPULSARY DEPOSIT', val: cdAmount },
+            { label: 'SHARE MONEY', val: smAmount },
         ];
 
         const getReceiptHTML = (copyType: string) => `
-        <div class="receipt-box">
+        <div class="receipt-box ${isBasicPlan ? 'basic-plan' : ''}">
             <div class="header-top">
                 <span style="float:left">REG.NO-10954</span>
                 <span style="float:right">9911770293, 9911773542</span>
@@ -1016,6 +1071,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             
             .receipt-box { padding: 6px; display: flex; flex-direction: column; min-height: 135mm; position:relative; border: 1.5px solid #000; width: 100%; box-sizing: border-box; }
             
+            .receipt-box.basic-plan { min-height: 110mm; }
+            .receipt-box.basic-plan .p-body { min-height: 40px; }
+            .receipt-box.basic-plan .words { margin-top: 5px; }
+            .receipt-box.basic-plan .auth-for { margin-top: 10px; }
+            .receipt-box.basic-plan .footer-bottom { margin-top: 15px; }
+
             .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
             
             .info-grid { margin-top: 5px; }
@@ -1651,6 +1712,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         setIsActivating(true);
         try {
+            // Calculate Total Collected
+            const totalCollected = activateForm.buildingFund + activateForm.shareMoney + activateForm.compulsoryDeposit + activateForm.welfareFund + activateForm.entryCharge;
+
             const activationReceiptDoc: MemberDocument = {
                 id: `DOC-REG-${Date.now()}`,
                 name: 'Registration Receipt',
@@ -1689,18 +1753,39 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 openingDate: activationDate
             });
 
-            await onAddLedgerEntry({
-                id: `LDG-ACTIVATE-${Date.now()}`,
-                date: activationDate,
-                description: `Activation Fees - ${member.fullName}`,
-                amount: totalFees,
-                type: 'Income',
-                category: 'Admission Fees & Deposits',
-                cashAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.cashAmount) || 0 : undefined,
-                onlineAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.onlineAmount) || 0 : undefined,
-            });
+            // Admission Fees logic should match App.tsx's handleAddMember
+            const depositInflow = 600; // Fixed deposit portion for Standard/Basic SM+CD
+            const admissionIncome = totalCollected - depositInflow;
 
-            handlePrintRegReceipt(totalFees);
+            if (admissionIncome > 0) {
+                await onAddLedgerEntry({
+                    id: `LDG-ACTIVATE-INC-${Date.now()}`,
+                    memberId: member.id,
+                    date: activationDate,
+                    description: `Activation Fee - ${member.fullName}`,
+                    amount: admissionIncome,
+                    type: 'Income',
+                    category: 'Admission Fees',
+                    cashAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.cashAmount) * (admissionIncome / totalCollected) : (activateForm.paymentMethod === 'Cash' ? admissionIncome : 0),
+                    onlineAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.onlineAmount) * (admissionIncome / totalCollected) : (activateForm.paymentMethod === 'Online' ? admissionIncome : 0),
+                });
+            }
+
+            if (depositInflow > 0) {
+                await onAddLedgerEntry({
+                    id: `LDG-ACTIVATE-DEP-${Date.now() + 1}`,
+                    memberId: member.id,
+                    date: activationDate,
+                    description: `Initial Deposit (SM/CD) - ${member.fullName}`,
+                    amount: depositInflow,
+                    type: 'Income',
+                    category: 'Admission Fees & Deposits',
+                    cashAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.cashAmount) * (depositInflow / totalCollected) : (activateForm.paymentMethod === 'Cash' ? depositInflow : 0),
+                    onlineAmount: activateForm.paymentMethod === 'Both' ? parseFloat(activateForm.onlineAmount) * (depositInflow / totalCollected) : (activateForm.paymentMethod === 'Online' ? depositInflow : 0),
+                });
+            }
+
+            handlePrintRegReceipt(totalCollected);
             setShowActivateModal(false);
         } finally {
             setIsActivating(false);
@@ -3160,20 +3245,35 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                             <button onClick={() => setShowActivateModal(false)}><X size={20} /></button>
                         </div>
                         <div className="p-6 space-y-4">
+                            <div className="flex justify-between items-center bg-slate-100 p-1 rounded-lg">
+                                <button
+                                    onClick={() => handleActivatePlanChange('Standard')}
+                                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${activateForm.registrationPlan === 'Standard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                                >
+                                    Standard (₹1550)
+                                </button>
+                                <button
+                                    onClick={() => handleActivatePlanChange('Basic')}
+                                    className={`flex-1 py-1.5 text-xs font-bold rounded-md transition-all ${activateForm.registrationPlan === 'Basic' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500'}`}
+                                >
+                                    Basic (₹700)
+                                </button>
+                            </div>
+
                             <div className="bg-green-50 p-4 rounded-lg flex items-center gap-3">
                                 <div className="p-2 bg-green-100 text-green-600 rounded-full"><Sparkles size={24} /></div>
                                 <div>
                                     <p className="text-green-800 font-bold">One-time Activation Fee</p>
-                                    <p className="text-green-700 text-xs">Total Payable: ₹1,550</p>
+                                    <p className="text-green-700 text-xs text-nowrap">Total Payable: ₹{(activateForm.buildingFund + activateForm.shareMoney + activateForm.compulsoryDeposit + activateForm.welfareFund + activateForm.entryCharge).toLocaleString()}</p>
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-3 text-xs">
-                                <div className="p-2 bg-slate-50 border rounded">Building Fund: ₹450</div>
-                                <div className="p-2 bg-slate-50 border rounded">Share Money: ₹400</div>
-                                <div className="p-2 bg-slate-50 border rounded">Compulsory Dep: ₹200</div>
-                                <div className="p-2 bg-slate-50 border rounded">Welfare Fund: ₹400</div>
-                                <div className="p-2 bg-slate-50 border rounded">Entry Charge: ₹100</div>
+                            <div className="grid grid-cols-2 gap-3 text-[10px]">
+                                {activateForm.entryCharge > 0 && <div className="p-2 bg-slate-50 border rounded">Admission Fee: ₹{activateForm.entryCharge}</div>}
+                                {activateForm.buildingFund > 0 && <div className="p-2 bg-slate-50 border rounded">Building Fund: ₹{activateForm.buildingFund}</div>}
+                                {activateForm.welfareFund > 0 && <div className="p-2 bg-slate-50 border rounded">Welfare Fund: ₹{activateForm.welfareFund}</div>}
+                                {activateForm.compulsoryDeposit > 0 && <div className="p-2 bg-slate-100 border rounded font-bold">Compulsory Dep: ₹{activateForm.compulsoryDeposit}</div>}
+                                {activateForm.shareMoney > 0 && <div className="p-2 bg-slate-100 border rounded font-bold">Share Money: ₹{activateForm.shareMoney}</div>}
                             </div>
 
                             <div className="pt-2">

@@ -383,6 +383,9 @@ const App: React.FC = () => {
 
     const handleAddMember = async (newMember: Member, newAccounts: Account[], totalCollected: number, shouldNavigate: boolean = true): Promise<boolean> => {
         try {
+            // Find Registration Receipt Document upload date or use joinDate
+            const regDate = newMember.joinDate;
+
             await upsertMember(newMember);
             for (const acc of newAccounts) {
                 await upsertAccount(acc);
@@ -390,28 +393,38 @@ const App: React.FC = () => {
                     await upsertTransaction(tx, acc.id);
                 }
             }
-            let ledgerEntry: LedgerEntry | null = null;
+
             if (totalCollected > 0) {
-                const admissionIncome = 950;
-                const depositInflow = totalCollected - admissionIncome;
+                // Registration Logic: 
+                // SM (400) + CD (200) = 600 (Deposits)
+                // Entry (100) + Building (450) + Welfare (400) = 950 (Admission Fees)
+                // For 700 Plan: Entry (100) = 100 (Admission Fees)
+
+                // We assume 600 is ALWAYS the deposit portion for ANY plan that has it
+                const depositInflow = 600;
+                const admissionIncome = totalCollected - depositInflow;
 
                 // 1. Admission Fees (Income)
-                const incomeEntry: LedgerEntry = {
-                    id: `LDG-REG-INC-${Date.now()}`,
-                    date: parseSafeDate(newMember.joinDate),
-                    description: `Registration Fee - ${newMember.fullName}`,
-                    amount: admissionIncome,
-                    type: 'Income',
-                    category: 'Admission Fees'
-                };
-                await upsertLedgerEntry(incomeEntry);
-                setLedger(prev => [incomeEntry, ...prev]);
+                if (admissionIncome > 0) {
+                    const incomeEntry: LedgerEntry = {
+                        id: `LDG-REG-INC-${Date.now()}`,
+                        memberId: newMember.id,
+                        date: parseSafeDate(regDate),
+                        description: `Registration Fee - ${newMember.fullName}`,
+                        amount: admissionIncome,
+                        type: 'Income',
+                        category: 'Admission Fees'
+                    };
+                    await upsertLedgerEntry(incomeEntry);
+                    setLedger(prev => [incomeEntry, ...prev]);
+                }
 
                 // 2. Deposits Flow (CD/SM)
                 if (depositInflow > 0) {
                     const depositEntry: LedgerEntry = {
-                        id: `LDG-REG-DEP-${Date.now()}`,
-                        date: parseSafeDate(newMember.joinDate),
+                        id: `LDG-REG-DEP-${Date.now() + 1}`,
+                        memberId: newMember.id,
+                        date: parseSafeDate(regDate),
                         description: `Initial Deposit (SM/CD) - ${newMember.fullName}`,
                         amount: depositInflow,
                         type: 'Income', // Recorded as Inflow
