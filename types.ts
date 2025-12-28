@@ -5,7 +5,8 @@ export enum AccountType {
   LOAN = 'Loan',
   FIXED_DEPOSIT = 'Fixed Deposit',
   RECURRING_DEPOSIT = 'Recurring Deposit',
-  COMPULSORY_DEPOSIT = 'Compulsory Deposit'
+  COMPULSORY_DEPOSIT = 'Compulsory Deposit',
+  SHARE_MONEY = "SHARE_MONEY"
 }
 
 export enum LoanType {
@@ -50,12 +51,16 @@ export interface AppSettings {
   };
   messaging?: {
     enabled: boolean;
-    provider: 'None' | 'AndroidGateway' | 'SMSGate';
-    url?: string;
     apiKey?: string;
-    username?: string;
-    password?: string;
+    deviceId?: string;
     officePhoneNumber?: string;
+    templates?: {
+      newMember?: string;
+      newAccount?: string;
+      deposit?: string;
+      withdrawal?: string;
+      maturity?: string;
+    };
   };
 }
 

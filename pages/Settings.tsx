@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { createAccount, upsertMember, upsertAccount, upsertTransaction, bulkUpsertMembers, bulkUpsertAccounts, bulkUpsertTransactions, bulkUpsertLedgerEntries, bulkUpsertAgents, bulkDeleteTransactions } from '../services/data';
 import { MessagingService } from '../services/messaging';
 import { AppSettings, Member, AccountType, Account, AccountStatus, Transaction, Agent, LedgerEntry, MemberDocument } from '../types';
-import { Save, AlertTriangle, Percent, Loader, FileText, Upload, Database, CheckCircle, AlertCircle, Download, Settings, Info, Plus, Trash2, X, Search, Wrench, MessageSquare, Smartphone, Play } from 'lucide-react';
+import { Save, Percent, Loader, FileText, Upload, Database, AlertCircle, Download, Settings, Plus, Trash2, X, Search, Wrench, MessageSquare, Smartphone, Play, AlertTriangle, CheckCircle, Info } from 'lucide-react';
 import { parseSafeDate, formatDate } from '../services/utils';
 import * as XLSX from 'xlsx';
 
@@ -15,10 +15,56 @@ interface SettingsPageProps {
     onImportSuccess?: () => void;
 }
 
+const ManualRescueUI = ({ fixes, onApply }: { fixes: any[], onApply: () => void }) => (
+    <div className="mb-4 animate-fade-in">
+        <h4 className="font-bold text-sm text-slate-700 mb-2">Proposed Fixes ({fixes.length})</h4>
+        <div className="border border-slate-200 rounded-lg overflow-hidden mb-3">
+            <table className="w-full text-left text-sm">
+                <thead className="bg-slate-100">
+                    <tr>
+                        <th className="p-2 border-b">Type</th>
+                        <th className="p-2 border-b">Name</th>
+                        <th className="p-2 border-b">Current Date</th>
+                        <th className="p-2 border-b">Recovered Date</th>
+                    </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                    {fixes.slice(0, 10).map((fix) => (
+                        <tr key={fix.id}>
+                            <td className="p-2">{fix.type}</td>
+                            <td className="p-2">{fix.name}</td>
+                            <td className="p-2 text-red-600">{fix.oldDate}</td>
+                            <td className="p-2 text-green-600 font-medium">{fix.newDate}</td>
+                        </tr>
+                    ))}
+                    {fixes.length > 10 && (
+                        <tr>
+                            <td colSpan={4} className="p-2 text-center text-slate-500 italic">
+                                ...and {fixes.length - 10} more
+                            </td>
+                        </tr>
+                    )}
+                </tbody>
+            </table>
+        </div>
+        <button
+            onClick={onApply}
+            className="w-full py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold flex items-center justify-center gap-2"
+        >
+            <Wrench size={16} /> Apply {fixes.length} Fixes
+        </button>
+    </div>
+);
+
 export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSettings, members = [], accounts = [], ledger = [], onImportSuccess }) => {
-    const [activeTab, setActiveTab] = useState<'config' | 'import' | 'maintenance'>('config');
+    const [activeTab, setActiveTab] = useState<'config' | 'import' | 'maintenance' | 'messaging'>('config');
     const [form, setForm] = useState(settings);
     const [isSaving, setIsSaving] = useState(false);
+
+    // Sync form with settings prop when it changes (e.g. after save)
+    React.useEffect(() => {
+        setForm(settings);
+    }, [settings]);
 
     // Import State
     const [importType, setImportType] = useState<'members' | 'accounts' | 'staff' | 'transactions'>('members');
@@ -806,6 +852,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                     <Database size={16} /> Data Management (Bulk Import)
                 </button>
                 <button
+                    onClick={() => setActiveTab('messaging')}
+                    className={`pb-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'messaging' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
+                >
+                    <MessageSquare size={16} /> Messaging
+                </button>
+                <button
                     onClick={() => setActiveTab('maintenance')}
                     className={`pb-3 text-sm font-medium flex items-center gap-2 border-b-2 transition-colors ${activeTab === 'maintenance' ? 'border-blue-600 text-blue-600' : 'border-transparent text-slate-500'}`}
                 >
@@ -860,48 +912,34 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         </div>
                     </div>
 
-                    <div className="md:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6 mt-2">
+
+                    <div className="col-span-1 md:col-span-2 flex justify-end">
+                        <button
+                            onClick={handleSave}
+                            disabled={isSaving}
+                            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 disabled:opacity-50"
+                        >
+                            {isSaving ? <Loader className="animate-spin" size={18} /> : <Save size={18} />}
+                            Save Configuration
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'messaging' && (
+                <div className="space-y-6 animate-fade-in">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
                         <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
-                            <MessageSquare className="text-blue-600" size={20} />
-                            Messaging Integration (Android Gateway)
+                            <Smartphone className="text-blue-600" size={20} />
+                            Messaging Gateway Configuration
                         </h3>
-
-                        {/* Mixed Content Warning */}
-                        {typeof window !== 'undefined' && window.location.protocol === 'https:' && form.messaging?.url && !form.messaging.url.includes('/proxy/') && form.messaging.url.startsWith('http:') && (
-                            <div className="mb-4 p-4 bg-red-50 border-2 border-red-200 rounded-lg">
-                                <div className="flex items-start gap-3">
-                                    <AlertTriangle className="text-red-600 shrink-0 mt-0.5" size={20} />
-                                    <div className="flex-1">
-                                        <h4 className="font-bold text-red-900 text-sm mb-1">⚠️ Mixed Content Detected!</h4>
-                                        <p className="text-xs text-red-700 mb-2">
-                                            Your CRM is running on <strong>HTTPS</strong> but your gateway URL is <strong>HTTP</strong>.
-                                            The browser will block this request for security reasons.
-                                        </p>
-                                        <div className="bg-red-100 p-2 rounded text-xs text-red-800">
-                                            <strong>Solution:</strong> Use the proxy server. Change your URL to:<br />
-                                            <code className="bg-red-200 px-1 rounded mt-1 inline-block">
-                                                http://localhost:3001/proxy/send?target={form.messaging.url}
-                                            </code>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-
-                        {/* Proxy Status Indicator */}
-                        {form.messaging?.url && form.messaging.url.includes('/proxy/') && (
-                            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-lg flex items-center gap-2">
-                                <CheckCircle className="text-green-600" size={16} />
-                                <span className="text-xs text-green-800 font-medium">✓ Using Proxy Server (Mixed Content Safe)</span>
-                            </div>
-                        )}
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
                                 <div className="flex items-center justify-between p-3 bg-blue-50 rounded-lg">
                                     <div>
                                         <p className="font-bold text-blue-900 text-sm">Enable Automated Alerts</p>
-                                        <p className="text-xs text-blue-700">Send WhatsApp/SMS for deposits & accounts</p>
+                                        <p className="text-xs text-blue-700">Send WhatsApp/SMS for system events</p>
                                     </div>
                                     <button
                                         onClick={() => setForm({
@@ -914,254 +952,134 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                     </button>
                                 </div>
 
-                                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-3 flex items-center gap-1">
-                                        <Smartphone size={14} /> Device & Gateway Configuration
-                                    </h4>
-                                    <div className="space-y-3">
+                                <div>
+                                    <div className="flex items-center justify-between p-4 bg-blue-50 border border-blue-200 rounded-lg mb-4">
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-600 mb-1">Gateway Provider</label>
-                                            <select
+                                            <h4 className="text-sm font-bold text-blue-900">TextBee Cloud Messaging</h4>
+                                            <p className="text-xs text-blue-700">Official Android SMS Gateway (Online/Cloud)</p>
+                                        </div>
+                                        <div className="text-[10px] bg-blue-100 text-blue-700 px-2 py-1 rounded font-bold uppercase">Active Provider</div>
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div>
+                                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">API Key</label>
+                                            <input
+                                                type="password"
+                                                placeholder="Entered from TextBee Dashboard"
                                                 className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
-                                                value={form.messaging?.provider || 'None'}
+                                                value={form.messaging?.apiKey || ''}
                                                 onChange={(e) => setForm({
                                                     ...form,
-                                                    messaging: { ...form.messaging!, provider: e.target.value as any }
+                                                    messaging: { ...form.messaging!, apiKey: e.target.value }
                                                 })}
-                                            >
-                                                <option value="None">None</option>
-                                                <option value="AndroidGateway">Android App Gateway (GET)</option>
-                                                <option value="SMSGate">SMSGate Local API (POST)</option>
-                                            </select>
+                                            />
                                         </div>
 
                                         <div>
-                                            <label className="block text-xs font-medium text-slate-600 mb-1 flex items-center justify-between">
-                                                <span>Gateway URL</span>
-                                                {form.messaging?.url && !form.messaging.url.includes('/proxy/') && (
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => {
-                                                            const currentUrl = form.messaging?.url || '';
-                                                            const proxyUrl = form.messaging?.provider === 'AndroidGateway'
-                                                                ? `http://localhost:3001/proxy/send?target=${currentUrl}`
-                                                                : `http://localhost:3001/proxy/message?target=${currentUrl}`;
-                                                            setForm({
-                                                                ...form,
-                                                                messaging: { ...form.messaging!, url: proxyUrl }
-                                                            });
-                                                        }}
-                                                        className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded hover:bg-blue-200"
-                                                    >
-                                                        🔄 Convert to Proxy URL
-                                                    </button>
-                                                )}
-                                            </label>
+                                            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Device ID</label>
                                             <input
                                                 type="text"
-                                                placeholder={
-                                                    form.messaging?.provider === 'SMSGate'
-                                                        ? 'http://localhost:3001/proxy/message?target=http://192.168.1.3:8080/v1/message'
-                                                        : 'http://localhost:3001/proxy/send?target=http://192.168.1.5:8080/send'
-                                                }
+                                                placeholder="Your Android Device ID"
                                                 className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm font-mono"
-                                                value={form.messaging?.url || ''}
+                                                value={form.messaging?.deviceId || ''}
                                                 onChange={(e) => setForm({
                                                     ...form,
-                                                    messaging: { ...form.messaging!, url: e.target.value }
+                                                    messaging: { ...form.messaging!, deviceId: e.target.value }
                                                 })}
                                             />
-                                            <p className="text-[10px] text-slate-500 mt-1">
-                                                💡 For HTTPS sites, use proxy URL format shown in placeholder
-                                            </p>
                                         </div>
 
-                                        {form.messaging?.provider === 'AndroidGateway' && (
-                                            <div>
-                                                <label className="block text-xs font-medium text-slate-600 mb-1">API Key / Access Key</label>
-                                                <input
-                                                    type="password"
-                                                    className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
-                                                    value={form.messaging?.apiKey || ''}
-                                                    onChange={(e) => setForm({
-                                                        ...form,
-                                                        messaging: { ...form.messaging!, apiKey: e.target.value }
-                                                    })}
-                                                />
-                                            </div>
-                                        )}
-
-                                        {form.messaging?.provider === 'SMSGate' && (
-                                            <div className="grid grid-cols-2 gap-3">
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600 mb-1">Username</label>
-                                                    <input
-                                                        type="text"
-                                                        className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
-                                                        value={form.messaging?.username || ''}
-                                                        onChange={(e) => setForm({
-                                                            ...form,
-                                                            messaging: { ...form.messaging!, username: e.target.value }
-                                                        })}
-                                                    />
-                                                </div>
-                                                <div>
-                                                    <label className="block text-xs font-medium text-slate-600 mb-1">Password</label>
-                                                    <input
-                                                        type="password"
-                                                        className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
-                                                        value={form.messaging?.password || ''}
-                                                        onChange={(e) => setForm({
-                                                            ...form,
-                                                            messaging: { ...form.messaging!, password: e.target.value }
-                                                        })}
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        <div>
-                                            <label className="block text-xs font-medium text-slate-600 mb-1">Office Phone Number (Sender/Test)</label>
-                                            <input
-                                                type="text"
-                                                placeholder="9876543210"
-                                                className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
-                                                value={form.messaging?.officePhoneNumber || ''}
-                                                onChange={(e) => setForm({
-                                                    ...form,
-                                                    messaging: { ...form.messaging!, officePhoneNumber: e.target.value }
-                                                })}
-                                            />
+                                        <div className="flex items-start gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                                            <div className="text-blue-500 mt-0.5">ⓘ</div>
+                                            <p className="text-[10px] text-slate-600 leading-relaxed">
+                                                To get your API Key and Device ID, register your phone on
+                                                <a href="https://textbee.dev" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-bold hover:underline mx-1">textbee.dev</a>
+                                                and install the official TextBee app.
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
                             </div>
 
                             <div className="space-y-4">
-                                <div className="p-4 bg-amber-50 border border-amber-100 rounded-lg">
-                                    <h4 className="text-xs font-bold text-amber-800 uppercase mb-2 flex items-center gap-1">
-                                        <Info size={14} /> Setup Instructions
-                                    </h4>
-                                    <div className="text-xs text-amber-700 leading-relaxed space-y-2">
-                                        <div>
-                                            <strong>Step 1:</strong> Install proxy dependencies<br />
-                                            <code className="bg-amber-100 px-1 rounded text-[10px]">npm install express http-proxy-middleware cors</code>
-                                        </div>
-                                        <div>
-                                            <strong>Step 2:</strong> Start proxy server<br />
-                                            <code className="bg-amber-100 px-1 rounded text-[10px]">node proxy-server.js</code>
-                                        </div>
-                                        <div>
-                                            <strong>Step 3:</strong> Use proxy URL format above
-                                        </div>
-                                        <div className="pt-2 border-t border-amber-200">
-                                            📖 See <code className="bg-amber-100 px-1 rounded">QUICK_START_PROXY.md</code> for full guide
-                                        </div>
-                                    </div>
-                                </div>
-
                                 <div className="p-4 border border-slate-200 rounded-lg">
                                     <p className="text-xs text-slate-500 font-medium mb-3 text-center">Test Connection</p>
-                                    <button
-                                        onClick={async () => {
-                                            const m = form.messaging;
-                                            if (!m?.url || !m?.officePhoneNumber) {
-                                                alert("Please fill in URL and Office Phone before testing.");
-                                                return;
-                                            }
-                                            if (m.provider === 'AndroidGateway' && !m.apiKey) {
-                                                alert("Please fill in API Key for Android Gateway.");
-                                                return;
-                                            }
-                                            if (m.provider === 'SMSGate' && (!m.username || !m.password)) {
-                                                alert("Please fill in Username and Password for SMSGate.");
-                                                return;
-                                            }
-
-                                            // Check for Mixed Content issue
-                                            if (typeof window !== 'undefined' && window.location.protocol === 'https:' && m.url.startsWith('http:') && !m.url.includes('/proxy/')) {
-                                                const useProxy = confirm(
-                                                    "⚠️ MIXED CONTENT DETECTED!\n\n" +
-                                                    "Your CRM is on HTTPS but gateway is HTTP.\n" +
-                                                    "The browser will block this request.\n\n" +
-                                                    "Would you like to automatically convert to proxy URL?\n\n" +
-                                                    "(Make sure proxy server is running: node proxy-server.js)"
-                                                );
-                                                if (useProxy) {
-                                                    const proxyUrl = m.provider === 'AndroidGateway'
-                                                        ? `http://localhost:3001/proxy/send?target=${m.url}`
-                                                        : `http://localhost:3001/proxy/message?target=${m.url}`;
-                                                    setForm({
-                                                        ...form,
-                                                        messaging: { ...m, url: proxyUrl }
-                                                    });
-                                                    alert("URL converted to proxy format. Please click 'Send Test Message' again.");
+                                    <div className="space-y-3">
+                                        <input
+                                            type="text"
+                                            placeholder="Test Phone Number"
+                                            className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm"
+                                            value={form.messaging?.officePhoneNumber || ''}
+                                            onChange={(e) => setForm({
+                                                ...form,
+                                                messaging: { ...form.messaging!, officePhoneNumber: e.target.value }
+                                            })}
+                                        />
+                                        <button
+                                            onClick={async () => {
+                                                const m = form.messaging;
+                                                if (!m?.apiKey || !m?.deviceId || !m?.officePhoneNumber) {
+                                                    alert("Please enter API Key, Device ID, and Test Phone Number.");
                                                     return;
                                                 }
-                                            }
 
-                                            console.log("🚀 Sending test message...");
-                                            const success = await MessagingService.sendMessage(form, m.officePhoneNumber, MessagingService.formatTestMessage());
-
-                                            if (success) {
-                                                alert("✅ Test message sent successfully! Check your phone.");
-                                            } else {
-                                                const isUsingProxy = m.url.includes('/proxy/');
-                                                let errorMsg = "❌ Failed to send test message.\n\n";
-
-                                                if (!isUsingProxy && typeof window !== 'undefined' && window.location.protocol === 'https:') {
-                                                    errorMsg += "🔒 LIKELY CAUSE: Mixed Content Error\n" +
-                                                        "Your CRM is HTTPS but gateway is HTTP.\n\n" +
-                                                        "SOLUTION:\n" +
-                                                        "1. Start proxy: node proxy-server.js\n" +
-                                                        "2. Click 'Convert to Proxy URL' button above\n" +
-                                                        "3. Try again\n\n";
-                                                } else if (isUsingProxy) {
-                                                    errorMsg += "🔌 PROXY MODE ACTIVE\n\n" +
-                                                        "Troubleshooting:\n" +
-                                                        "1. Is proxy running? Check: http://localhost:3001/health\n" +
-                                                        "2. Is your Android gateway reachable?\n" +
-                                                        "3. Check browser console (F12) for details\n\n";
-                                                } else {
-                                                    errorMsg += "Troubleshooting:\n" +
-                                                        "1. Check Browser Console (F12) for errors\n" +
-                                                        "2. Verify gateway URL is correct\n" +
-                                                        "3. Ensure Android app is running\n" +
-                                                        "4. Check network connectivity\n\n";
-                                                }
-
-                                                errorMsg += "📖 See QUICK_START_PROXY.md for detailed help";
-                                                alert(errorMsg);
-                                            }
-                                        }}
-                                        className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm"
-                                    >
-                                        <Play size={16} /> Send Test Message
-                                    </button>
-
-                                    {form.messaging?.url && form.messaging.url.includes('/proxy/') && (
-                                        <a
-                                            href="http://localhost:3001/health"
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="mt-2 w-full flex items-center justify-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-medium transition-colors"
+                                                const success = await MessagingService.sendMessage(form as any, m.officePhoneNumber!, MessagingService.formatTestMessage(), true);
+                                                if (success) alert("✅ Test message sent!");
+                                                else alert("❌ Failed to send test message. Check console.");
+                                            }}
+                                            className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold transition-colors shadow-sm"
                                         >
-                                            🔍 Check Proxy Status
-                                        </a>
-                                    )}
+                                            <Play size={16} /> Send Test Message
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <div className="col-span-1 md:col-span-2 flex justify-end">
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
+                        <h3 className="font-bold text-slate-900 mb-4 pb-2 border-b border-slate-100 flex items-center gap-2">
+                            <FileText className="text-blue-600" size={20} />
+                            Message Templates
+                        </h3>
+                        <p className="text-xs text-slate-500 mb-4">
+                            Variables: <span className="font-mono bg-slate-100 px-1 rounded">{"{memberName}"}</span>, <span className="font-mono bg-slate-100 px-1 rounded">{"{memberId}"}</span>, <span className="font-mono bg-slate-100 px-1 rounded">{"{accountType}"}</span>, <span className="font-mono bg-slate-100 px-1 rounded">{"{accountNo}"}</span>, <span className="font-mono bg-slate-100 px-1 rounded">{"{amount}"}</span>, <span className="font-mono bg-slate-100 px-1 rounded">{"{balance}"}</span>, <span className="font-mono bg-slate-100 px-1 rounded">{"{cdBalance}"}</span>, <span className="font-mono bg-slate-100 px-1 rounded">{"{odBalance}"}</span>
+                        </p>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            {[
+                                { label: 'New Member Welcome', key: 'newMember' },
+                                { label: 'Account Opening', key: 'newAccount' },
+                                { label: 'Deposit Confirmation', key: 'deposit' },
+                                { label: 'Withdrawal Confirmation', key: 'withdrawal' },
+                                { label: 'RD/FD Maturity Alert', key: 'maturity' },
+                            ].map((tpl) => (
+                                <div key={tpl.key} className="space-y-2">
+                                    <label className="block text-sm font-medium text-slate-700">{tpl.label}</label>
+                                    <textarea
+                                        rows={3}
+                                        className="w-full border border-slate-300 bg-white text-slate-900 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-100 outline-none"
+                                        value={(form.messaging?.templates as any)?.[tpl.key] || ''}
+                                        onChange={(e) => {
+                                            const templates = { ...form.messaging?.templates, [tpl.key]: e.target.value };
+                                            setForm({ ...form, messaging: { ...form.messaging!, templates } });
+                                        }}
+                                        placeholder={`Enter ${tpl.label.toLowerCase()} message...`}
+                                    />
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end">
                         <button
                             onClick={handleSave}
                             disabled={isSaving}
                             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-bold flex items-center gap-2 disabled:opacity-50"
                         >
                             {isSaving ? <Loader className="animate-spin" size={18} /> : <Save size={18} />}
-                            Save Configuration
+                            Save Messaging Config
                         </button>
                     </div>
                 </div>
@@ -1536,44 +1454,3 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         </div>
     );
 };
-
-const ManualRescueUI = ({ fixes, onApply }: { fixes: any[], onApply: () => void }) => (
-    <div className="mb-4 animate-fade-in">
-        <h4 className="font-bold text-sm text-slate-700 mb-2">Proposed Fixes ({fixes.length})</h4>
-        <div className="border border-slate-200 rounded-lg overflow-hidden mb-3">
-            <table className="w-full text-left text-sm">
-                <thead className="bg-slate-100">
-                    <tr>
-                        <th className="p-2 border-b">Type</th>
-                        <th className="p-2 border-b">Name</th>
-                        <th className="p-2 border-b">Current Date</th>
-                        <th className="p-2 border-b">Recovered Date</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
-                    {fixes.slice(0, 10).map((fix) => (
-                        <tr key={fix.id}>
-                            <td className="p-2">{fix.type}</td>
-                            <td className="p-2">{fix.name}</td>
-                            <td className="p-2 text-red-600">{fix.oldDate}</td>
-                            <td className="p-2 text-green-600 font-medium">{fix.newDate}</td>
-                        </tr>
-                    ))}
-                    {fixes.length > 10 && (
-                        <tr>
-                            <td colSpan={4} className="p-2 text-center text-slate-500 italic">
-                                ...and {fixes.length - 10} more
-                            </td>
-                        </tr>
-                    )}
-                </tbody>
-            </table>
-        </div>
-        <button
-            onClick={onApply}
-            className="w-full py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-bold flex items-center justify-center gap-2"
-        >
-            <Wrench size={16} /> Apply {fixes.length} Fixes
-        </button>
-    </div>
-);

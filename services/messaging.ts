@@ -5,60 +5,59 @@ export const MessagingService = {
         return `This is a test message from Jeevan Atulya CRM sent at ${new Date().toLocaleTimeString()}.`;
     },
 
-    sendMessage: async (settings: AppSettings, phone: string, message: string): Promise<boolean> => {
-        if (!settings.messaging?.enabled) {
+    replacePlaceholders: (template: string, data: any) => {
+        let result = template;
+        Object.keys(data).forEach(key => {
+            const regex = new RegExp(`{${key}}`, 'g');
+            result = result.replace(regex, data[key]);
+        });
+        return result;
+    },
+
+    sendMessage: async (settings: AppSettings, phone: string, message: string, force: boolean = false): Promise<boolean> => {
+        if (!settings.messaging?.enabled && !force) {
             console.warn('Messaging is disabled');
             return false;
         }
 
         const config = settings.messaging;
-        if (!config.url) {
-            console.error('Messaging URL not configured');
+        if (!config?.apiKey || !config?.deviceId) {
+            console.error('Messaging configuration missing (API Key or Device ID)');
             return false;
         }
 
-        try {
-            let response;
-            if (config.provider === 'AndroidGateway') {
-                // GET request format for Android Gateway
-                const url = new URL(config.url);
-                url.searchParams.append('phone', phone);
-                url.searchParams.append('message', message);
-                if (config.apiKey) {
-                    url.searchParams.append('key', config.apiKey);
-                }
+        // Strip non-numeric characters from phone
+        const cleanPhone = phone.replace(/\D/g, '').slice(-10);
+        const finalPhone = phone.startsWith('+') ? phone : `+91${cleanPhone}`;
 
-                response = await fetch(url.toString());
-            } else if (config.provider === 'SMSGate') {
-                // POST request format for generic SMS Gateways
-                response = await fetch(config.url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(config.username && config.password ? {
-                            'Authorization': 'Basic ' + btoa(config.username + ':' + config.password)
-                        } : {})
-                    },
-                    body: JSON.stringify({
-                        to: phone,
-                        message: message,
-                        sender: config.officePhoneNumber
-                    })
-                });
-            } else {
-                console.warn('Unknown provider');
-                return false;
-            }
+        try {
+            const url = `https://api.textbee.dev/api/v1/gateway/devices/${config.deviceId}/send-sms`;
+            const payload = {
+                recipients: [finalPhone],
+                message: message
+            };
+
+            console.log('Sending to TextBee Cloud:', url);
+
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': config.apiKey
+                },
+                body: JSON.stringify(payload)
+            });
 
             if (response.ok) {
-                console.log('Message sent successfully');
+                console.log('Message sent successfully via TextBee Cloud');
                 return true;
             } else {
-                console.error('Failed to send message:', await response.text());
+                const errorText = await response.text();
+                console.error('Failed to send message via TextBee Cloud:', errorText);
                 return false;
             }
         } catch (error) {
-            console.error('Error sending message:', error);
+            console.error('Error sending message via TextBee Cloud:', error);
             return false;
         }
     }

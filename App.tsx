@@ -13,6 +13,7 @@ import { SettingsPage } from './pages/Settings';
 import { Accounting } from './pages/Accounting';
 import { PassbookPage } from './pages/PassbookPage';
 import { Groups } from './pages/Groups';
+import { MessagingService } from './services/messaging';
 import { parseSafeDate, formatDate } from './services/utils';
 import {
     loadData,
@@ -187,6 +188,75 @@ const App: React.FC = () => {
         setReadNotificationIds(prev => new Set(prev).add(id));
     };
 
+    const triggerSMS = async (type: 'newMember' | 'newAccount' | 'deposit' | 'withdrawal' | 'maturity', phone: string, data: any) => {
+        if (!settings.messaging?.enabled || !phone) return;
+        const template = (settings.messaging.templates as any)?.[type];
+        if (!template) return;
+
+        // Calculate specific account type balances for the member
+        const memberId = data.memberId;
+        const extraBalances: any = {
+            cdBalance: '0',
+            smBalance: '0',
+            odBalance: '0',
+            fdBalance: '0',
+            rdBalance: '0',
+            loanBalance: '0'
+        };
+
+        if (memberId) {
+            let memberAccounts = accounts.filter(a => a.memberId === memberId);
+
+            // If this is a new account, it won't be in the 'accounts' state yet
+            if (type === 'newAccount' && data.accountNo && !memberAccounts.some(a => a.accountNumber === data.accountNo)) {
+                memberAccounts.push({
+                    accountNumber: data.accountNo,
+                    type: data.accountType,
+                    balance: Number(data.balance)
+                } as any);
+            }
+
+            const totals: any = {};
+            memberAccounts.forEach(acc => {
+                // Use the fresh balance from 'data' if this is the account being transacted
+                const currentBalance = (data.accountNo && acc.accountNumber === data.accountNo)
+                    ? Number(data.balance)
+                    : (acc.balance || 0);
+
+                let tag = '';
+                if (acc.type === AccountType.COMPULSORY_DEPOSIT) tag = 'cdBalance';
+                else if (acc.type === AccountType.SHARE_CAPITAL) tag = 'smBalance';
+                else if (acc.type === AccountType.OPTIONAL_DEPOSIT) tag = 'odBalance';
+                else if (acc.type === AccountType.FIXED_DEPOSIT) tag = 'fdBalance';
+                else if (acc.type === AccountType.RECURRING_DEPOSIT) tag = 'rdBalance';
+                else if (acc.type === AccountType.LOAN) tag = 'loanBalance';
+
+                if (tag) {
+                    totals[tag] = (totals[tag] || 0) + currentBalance;
+                }
+            });
+
+            Object.keys(totals).forEach(tag => {
+                extraBalances[tag] = String(totals[tag]);
+            });
+        }
+
+        const message = MessagingService.replacePlaceholders(template, {
+            ...data,
+            ...extraBalances,
+            date: data.date || new Date().toLocaleDateString('en-IN'),
+            balance: data.balance !== undefined ? String(data.balance) : '',
+            amount: data.amount !== undefined ? String(data.amount) : '',
+            accountNo: data.accountNo || '',
+            accountType: data.accountType || '',
+            memberName: data.memberName || '',
+            memberId: data.memberId || ''
+        });
+
+        console.log(`[SMS] Sending ${type} to ${phone}: ${message}`);
+        await MessagingService.sendMessage(settings, phone, message);
+    };
+
     // --- Scheduled Tasks Logic ---
     const runScheduledTasks = async (currentAccounts: Account[], currentMembers: Member[]) => {
         const today = new Date();
@@ -263,6 +333,13 @@ const App: React.FC = () => {
                             await upsertAccount(updatedAccounts[odAccountIndex]);
                             await upsertTransaction(updatedAccounts[odAccountIndex].transactions[0], updatedAccounts[odAccountIndex].id);
 
+                            // SMS Trigger: Maturity
+                            triggerSMS('maturity', member.phone, {
+                                memberName: member.fullName,
+                                accountNo: acc.accountNumber,
+                                amount: transferAmount,
+                                balance: updatedAccounts[odAccountIndex].balance
+                            });
 
                             updatesMade = true;
                         }
@@ -439,6 +516,14 @@ const App: React.FC = () => {
 
 
             if (shouldNavigate) setCurrentPage('members');
+
+            // SMS Trigger: New Member
+            triggerSMS('newMember', newMember.phone, {
+                memberName: newMember.fullName,
+                memberId: newMember.id,
+                date: newMember.joinDate
+            });
+
             return true;
         } catch (e) {
             console.error("Save failed", e);
@@ -497,6 +582,19 @@ const App: React.FC = () => {
             };
             setLedger(prev => [ledgerEntry, ...prev]);
             await upsertLedgerEntry(ledgerEntry);
+        }
+
+        // SMS Trigger: New Account
+        const member = members.find(m => m.id === memberId);
+        if (member) {
+            triggerSMS('newAccount', member.phone, {
+                memberName: member.fullName,
+                memberId: member.id,
+                accountNo: newAccount.accountNumber,
+                accountType: newAccount.type,
+                amount: newAccount.balance,
+                balance: newAccount.balance
+            });
         }
     };
 
@@ -580,6 +678,20 @@ const App: React.FC = () => {
             await upsertAccount(accToSave);
             const ledgerToSave = { ...newLedgerEntry, date: parseSafeDate(newLedgerEntry.date) };
             await upsertLedgerEntry(ledgerToSave);
+
+            // SMS Trigger: Deposit/Withdrawal
+            const member = members.find(m => m.id === account.memberId);
+            if (member) {
+                triggerSMS(newTransaction.type === 'credit' ? 'deposit' : 'withdrawal', member.phone, {
+                    memberName: member.fullName,
+                    memberId: member.id,
+                    accountNo: account.accountNumber,
+                    accountType: account.type,
+                    amount: newTransaction.amount,
+                    balance: newBalance,
+                    date: newTransaction.date
+                });
+            }
         } catch (e) {
             console.error("Failed to persist transaction", e);
         }

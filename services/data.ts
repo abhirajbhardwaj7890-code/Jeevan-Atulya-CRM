@@ -20,6 +20,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
             vehicle: 10.0,
             emergency: 14.0
         }
+    },
+    messaging: {
+        enabled: false,
+        apiKey: '',
+        deviceId: '',
+        templates: {
+            newMember: "Welcome {memberName} (ID: {memberId}) to Jeevan Atulya! Your membership is confirmed on {date}.",
+            newAccount: "Dear {memberName} ({memberId}), your new {accountType} account {accountNo} has been opened with a balance of ₹{balance}.",
+            deposit: "Transaction Alert: ₹{amount} credited to your {accountType} account {accountNo} on {date}. New Balance: ₹{balance}.",
+            withdrawal: "Transaction Alert: ₹{amount} debited from your {accountType} account {accountNo} on {date}. New Balance: ₹{balance}.",
+            maturity: "Maturity Alert: Your {accountType} account {accountNo} has matured. ₹{amount} has been transferred to your Optional Deposit. New Balance: ₹{balance}."
+        }
     }
 };
 
@@ -496,6 +508,7 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             if (dbSettings.interest_rates) settings.interestRates = dbSettings.interest_rates;
             if (dbSettings.late_payment_fine !== undefined) settings.latePaymentFine = dbSettings.late_payment_fine;
             if (dbSettings.grace_period_days !== undefined) settings.gracePeriodDays = dbSettings.grace_period_days;
+            if (dbSettings.messaging) settings.messaging = dbSettings.messaging;
 
             // Fallback: Check if it's the old key-value format (array of {key, value} objects)
             // This handles the case where the table might still be using the old schema or data migration hasn't happened
@@ -712,7 +725,8 @@ export const saveSettings = async (settings: AppSettings) => {
         { key: 'late_payment_fine', value: String(settings.latePaymentFine) },
         { key: 'grace_period_days', value: String(settings.gracePeriodDays) },
         { key: 'interest_rates', value: JSON.stringify(settings.interestRates) },
-        { key: 'default_agent_fee', value: String(settings.defaultAgentFee) }
+        { key: 'default_agent_fee', value: String(settings.defaultAgentFee) },
+        { key: 'messaging', value: JSON.stringify(settings.messaging || {}) }
     ];
 
     const { error } = await supabase.from('settings').upsert(updates, { onConflict: 'key' });
