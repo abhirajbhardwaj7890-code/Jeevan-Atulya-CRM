@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, LoanType, MemberDocument, UserRole, AppSettings, Guarantor, Nominee, LedgerEntry, Agent } from '../types';
+import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, LoanType, MemberDocument, UserRole, AppSettings, Guarantor, Nominee, LedgerEntry } from '../types';
 import { generateMemberSummary, analyzeFinancialHealth, draftInteractionNote, calculateMemberRisk } from '../services/gemini';
 import { formatDate, parseSafeDate } from '../services/utils';
 import { upsertTransaction } from '../services/data';
@@ -9,7 +9,6 @@ interface MemberDetailProps {
     member: Member;
     allMembers: Member[]; // Needed for guarantor search
     accounts: Account[];
-    agents?: Agent[]; // Added to resolve agent names
     interactions: Interaction[];
     userRole: UserRole;
     appSettings: AppSettings;
@@ -225,9 +224,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const handleSelectGuarantor = (slot: 'g1' | 'g2', member: Member) => {
         setGuarantors(prev => ({
             ...prev,
-            [`${slot}Name`]: member.fullName,
-            [`${slot}Phone`]: member.phone,
-            [`${slot}MemberId`]: member.id
+            [`${slot} Name`]: member.fullName,
+            [`${slot} Phone`]: member.phone,
+            [`${slot} MemberId`]: member.id
         }));
         setGuarantorSearch(prev => ({ ...prev, [slot]: '' }));
         if (slot === 'g1') setShowG1Results(false);
@@ -237,9 +236,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const clearGuarantor = (slot: 'g1' | 'g2') => {
         setGuarantors(prev => ({
             ...prev,
-            [`${slot}Name`]: '',
-            [`${slot}Phone`]: '',
-            [`${slot}MemberId`]: ''
+            [`${slot} Name`]: '',
+            [`${slot} Phone`]: '',
+            [`${slot} MemberId`]: ''
         }));
     };
 
@@ -409,7 +408,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             const base64File = await toBase64(uploadForm.file);
 
             const newDoc: MemberDocument = {
-                id: `DOC-${Date.now()}`,
+                id: `DOC - ${Date.now()} `,
                 name: uploadForm.file.name,
                 type: uploadForm.file.type.split('/')[1] || 'File',
                 category: uploadForm.category as any,
@@ -612,7 +611,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const g2 = acc.guarantors && acc.guarantors[1] ? acc.guarantors[1] : { name: '', relation: '', phone: '' };
 
         const htmlContent = `
-            <html>
+    < html >
             <head>
                 <title>Loan Application - ${acc.accountNumber}</title>
                 <style>
@@ -790,8 +789,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     </div>
                 </div>
             </body>
-            </html>
-        `;
+            </html >
+    `;
 
         printViaWindow(htmlContent);
     };
@@ -806,9 +805,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         // Payment Mode String for the certificate
         let paymentModeStr: string = initTx?.paymentMethod || 'Cash';
         if (initTx?.paymentMethod === 'Both') {
-            paymentModeStr = `Cash (₹${initTx?.cashAmount || 0}) Online (₹${initTx?.onlineAmount || 0})`;
+            paymentModeStr = `Cash(₹${initTx?.cashAmount || 0}) Online(₹${initTx?.onlineAmount || 0})`;
         } else if (initTx?.paymentMethod === 'Online' && initTx?.utrNumber) {
-            paymentModeStr = `Online (UTR:${initTx?.utrNumber})`;
+            paymentModeStr = `Online(UTR: ${initTx?.utrNumber})`;
         } else if (initTx?.paymentMethod === 'Online') {
             paymentModeStr = `Online`;
         }
@@ -822,7 +821,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         const certNo = acc.id.split('-').pop(); // Simple cert number from ID
 
         const htmlContent = `
-            <html>
+    < html >
             <head>
                 <title>FD Certificate - ${acc.accountNumber}</title>
                 <style>
@@ -908,8 +907,8 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 <div class="sig-grid"><div>SEAL</div><div>MANAGER/ACCOUNTANT</div><div>PRESIDENT</div><div>HONY. SECRETARY</div><div>TREASURER</div></div>
                 <div style="text-align:center; font-size:10px; margin-top:20px;">Have a Nice Day</div>
             </body>
-            </html>
-        `;
+            </html >
+    `;
 
         printViaWindow(htmlContent);
     };
@@ -964,10 +963,10 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         if (initTx?.paymentMethod) {
             paymentModeStr = initTx.paymentMethod;
             if (initTx.paymentMethod === 'Both') {
-                paymentModeStr = `Cash (${initTx.cashAmount || ''}) Online (${initTx.onlineAmount || ''})`;
+                paymentModeStr = `Cash(${initTx.cashAmount || ''}) Online(${initTx.onlineAmount || ''})`;
             }
             if (initTx.utrNumber) {
-                paymentModeStr += ` UTR:${initTx.utrNumber}`;
+                paymentModeStr += ` UTR:${initTx.utrNumber} `;
             }
         }
 
@@ -980,7 +979,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         ];
 
         const getReceiptHTML = (copyType: string) => `
-        <div class="receipt-box ${isBasicPlan ? 'basic-plan' : ''}">
+    < div class="receipt-box ${isBasicPlan ? 'basic-plan' : ''}" >
             <div class="header-top">
                 <span style="float:left">REG.NO-10954</span>
                 <span style="float:right">9911770293, 9911773542</span>
@@ -1055,11 +1054,11 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 </div>
             </div>
             <div style="text-align:center; font-size:9px; margin-top:10px;">Have a Nice Day</div>
-        </div>
+        </div >
     `;
 
         const htmlContent = `
-        <html>
+    < html >
         <head>
           <title>Registration Receipt</title>
           <style>
@@ -1106,7 +1105,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             <div class="receipt-copy-box">${getReceiptHTML('OFFICE COPY')}</div>
           </div>
         </body>
-        </html>
+        </html >
     `;
 
         const printWindow = window.open('', '_blank', 'width=1100,height=800');
@@ -1120,12 +1119,12 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
     const generateReceiptHTML = (tx: Transaction, acc: Account, balanceAfter: number, mem: Member) => {
         const dateStr = formatDate(tx.date);
-        let paymentDetails: string = `Pay. Mode: ${tx.paymentMethod || 'Cash'}`;
+        let paymentDetails: string = `Pay.Mode: ${tx.paymentMethod || 'Cash'} `;
         if (tx.paymentMethod === 'Both' && (tx.cashAmount || tx.onlineAmount)) {
-            paymentDetails = `Pay. Mode: Cash (₹${tx.cashAmount || 0}) Online (₹${tx.onlineAmount || 0})`;
+            paymentDetails = `Pay.Mode: Cash(₹${tx.cashAmount || 0}) Online(₹${tx.onlineAmount || 0})`;
         }
         if (tx.utrNumber) {
-            paymentDetails += ` UTR:${tx.utrNumber}`;
+            paymentDetails += ` UTR:${tx.utrNumber} `;
         }
 
         const isRD = acc.type === AccountType.RECURRING_DEPOSIT;
@@ -1139,7 +1138,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
         // Recipient Summary (Other accounts)
         const otherAccs = accounts.filter(a => a.id !== acc.id);
-        const accSummaries = otherAccs.map(a => `${a.accountNumber.split('-').pop()} ${a.balance} ${a.type === AccountType.LOAN ? 'Dr' : 'Cr'}`).join(' ');
+        const accSummaries = otherAccs.map(a => `${a.accountNumber.split('-').pop()} ${a.balance} ${a.type === AccountType.LOAN ? 'Dr' : 'Cr'} `).join(' ');
 
         const getReceipt = (copyType: string) => {
             if (isRD) {

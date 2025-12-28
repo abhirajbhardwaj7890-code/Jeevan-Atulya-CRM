@@ -32,7 +32,7 @@ export type UserRole = 'Admin' | 'Staff';
 export interface AppSettings {
   latePaymentFine: number;
   gracePeriodDays: number;
-  defaultAgentFee: number; // Changed: Flat fee per member
+  defaultIntroducerFee: number; // Flat fee per member introduced
   // Interest Rates Configuration
   interestRates: {
     optionalDeposit: number;
@@ -69,18 +69,6 @@ export interface Branch {
   name: string;
   location: string;
   managerName: string;
-}
-
-export interface Agent {
-  id: string;
-  memberId?: string; // Linked Member ID
-  name: string;
-  branchId: string;
-  phone: string;
-  commissionFee?: number; // Changed: Specific fee for this agent
-  activeMembers: number; // Derived for demo
-  totalCollections: number; // Derived for demo
-  status: 'Active' | 'Inactive';
 }
 
 export interface Notification {
@@ -192,7 +180,7 @@ export interface Member {
   riskReason?: string;
   documents?: MemberDocument[];
   branchId?: string; // Linked to Branch
-  agentId?: string; // Linked to Agent (This is the ID of the Agent entity)
+  introducerId?: string; // Member ID of the introducer (another member who introduced this member)
   lastPrintedTransactionId?: string; // Track last printed passbook entry
   nominee?: Nominee;
 }

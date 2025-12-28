@@ -1,11 +1,11 @@
-import { Member, Account, AccountType, AccountStatus, Interaction, LoanType, Branch, Agent, Notification, Guarantor, AppSettings, Transaction, LedgerEntry, MemberGroup } from '../types';
+import { Member, Account, AccountType, AccountStatus, Interaction, LoanType, Branch, Notification, Guarantor, AppSettings, Transaction, LedgerEntry, MemberGroup } from '../types';
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 import { parseSafeDate } from './utils';
 
 export const DEFAULT_SETTINGS: AppSettings = {
     latePaymentFine: 500,
     gracePeriodDays: 30,
-    defaultAgentFee: 500, // Default 500 Rs per member
+    defaultIntroducerFee: 500, // Default 500 Rs per member introduced
     interestRates: {
         optionalDeposit: 3.5,
         fixedDeposit: 6.8,
@@ -56,7 +56,7 @@ export const mapMemberFromDB = (m: any): Member => ({
     riskScore: m.risk_score,
     avatarUrl: m.avatar_url || `https://ui-avatars.com/api/?name=${m.full_name.replace(' ', '+')}&background=random`,
     branchId: m.branch_id,
-    agentId: m.agent_id,
+    introducerId: m.introducer_id,
     documents: m.documents || [],
     lastPrintedTransactionId: m.last_printed_transaction_id,
     nominee: m.nominee ? {
@@ -85,7 +85,7 @@ const mapMemberToDB = (m: Member) => ({
     status: m.status,
     risk_score: m.riskScore ?? 0,
     branch_id: m.branchId ?? null,
-    agent_id: m.agentId ?? null,
+    introducer_id: m.introducerId ?? null,
     avatar_url: m.avatarUrl,
     last_printed_transaction_id: m.lastPrintedTransactionId ?? null,
     documents: m.documents || [],
@@ -273,27 +273,7 @@ const mapBranchToDB = (b: Branch) => ({
     manager_name: b.managerName
 });
 
-const mapAgentFromDB = (a: any): Agent => ({
-    id: a.id,
-    memberId: a.member_id,
-    name: a.name,
-    branchId: a.branch_id,
-    phone: a.phone,
-    commissionFee: a.commission_fee ? Number(a.commission_fee) : undefined, // Changed
-    activeMembers: 0,
-    totalCollections: 0,
-    status: a.status
-});
 
-const mapAgentToDB = (a: Agent) => ({
-    id: a.id,
-    member_id: a.memberId ?? null,
-    name: a.name,
-    branch_id: a.branchId,
-    phone: a.phone,
-    commission_fee: a.commissionFee, // Changed
-    status: a.status
-});
 
 const mapTransactionToDB = (t: Transaction, accountId: string) => ({
     id: t.id,
@@ -449,14 +429,13 @@ const getMemoryCache = () => {
             settings: { ...DEFAULT_SETTINGS },
             ledger: [],
             branches: [],
-            agents: [],
             groups: []
         };
     }
     return MEMORY_CACHE;
 };
 
-export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], agents: Agent[], groups: MemberGroup[] }> => {
+export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], groups: MemberGroup[] }> => {
     // Check if Supabase is configured
     if (!isSupabaseConfigured()) {
         const cache = getMemoryCache();
@@ -467,63 +446,74 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             interactions: [...cache.interactions],
             ledger: [...cache.ledger],
             branches: [...cache.branches],
-            agents: [...cache.agents],
             groups: [...cache.groups]
         };
     }
 
     try {
         const supabase = getSupabaseClient();
-        const [membersRes, accountsRes, interactionsRes, ledgerRes, branchesRes, agentsRes, settingsRes] = await Promise.all([
+        console.log("[LOAD] Fetching grid data...");
+        const [membersRes, accountsRes, interactionsRes, ledgerRes, branchesRes, settingsRes] = await Promise.all([
             supabase.from('members').select('*'),
             supabase.from('accounts').select('*, transactions(*)'),
             supabase.from('interactions').select('*'),
             supabase.from('society_ledger').select('*'),
             supabase.from('branches').select('*'),
-            supabase.from('agents').select('*'),
             supabase.from('settings').select('*')
         ]);
 
-        // Fetch Groups (Simulated via local cache if table missing or fetch fails, for resilience during dev)
-        // ideally we would do: supabase.from('groups').select('*')
-        // For now, we return empty or cached groups if not implemented in DB yet
-        const groups: MemberGroup[] = getMemoryCache().groups; // Fallback to local until SQL is run
+        // Fetch Groups (Simulated via local cache to avoid breaking if table missing)
+        const groups: MemberGroup[] = getMemoryCache().groups;
 
         const members = (membersRes.data || []).map(mapMemberFromDB);
         const accounts = (accountsRes.data || []).map(mapAccountFromDB);
         const interactions = (interactionsRes.data || []).map(mapInteractionFromDB);
         const ledger = (ledgerRes.data || []).map(mapLedgerFromDB);
         const branches = (branchesRes.data || []).map(mapBranchFromDB);
-        const agents = (agentsRes.data || []).map(mapAgentFromDB);
 
         // Merge Settings
         const settings = { ...DEFAULT_SETTINGS };
 
-        // Handle new schema format where specific columns exist on the first row
         if (settingsRes.data && settingsRes.data.length > 0) {
-            // Check if data is in the new schema format (single row with columns)
             const dbSettings = settingsRes.data[0];
 
-            // Try explicit column mapping first (priority)
-            if (dbSettings.interest_rates) settings.interestRates = dbSettings.interest_rates;
-            if (dbSettings.late_payment_fine !== undefined) settings.latePaymentFine = dbSettings.late_payment_fine;
-            if (dbSettings.grace_period_days !== undefined) settings.gracePeriodDays = dbSettings.grace_period_days;
-            if (dbSettings.messaging) settings.messaging = dbSettings.messaging;
-
-            // Fallback: Check if it's the old key-value format (array of {key, value} objects)
-            // This handles the case where the table might still be using the old schema or data migration hasn't happened
-            if (dbSettings.key && dbSettings.value) {
+            // 1. Try explicit column mapping (New Schema)
+            // Check if one of the known columns exists to confirm schema type
+            if (dbSettings.interest_rates !== undefined || dbSettings.messaging !== undefined) {
+                if (dbSettings.interest_rates) settings.interestRates = dbSettings.interest_rates;
+                if (dbSettings.late_payment_fine !== undefined) settings.latePaymentFine = dbSettings.late_payment_fine;
+                if (dbSettings.grace_period_days !== undefined) settings.gracePeriodDays = dbSettings.grace_period_days;
+                if (dbSettings.default_introducer_fee !== undefined) settings.defaultIntroducerFee = dbSettings.default_introducer_fee;
+                if (dbSettings.messaging) settings.messaging = dbSettings.messaging;
+            }
+            // 2. Fallback to Key-Value (Old Schema)
+            // This block iterates over all settings rows, assuming each row is a key-value pair.
+            // The condition `dbSettings.key && dbSettings.value` was incorrect as it only checked the first row.
+            // The correct approach is to iterate over `settingsRes.data` if it's an old schema.
+            else if (settingsRes.data.some((row: any) => row.key && row.value)) { // Check if any row looks like a key-value pair
                 settingsRes.data.forEach((row: any) => {
                     const val = row.value;
-                    if (row.key === 'interest_rates') { try { settings.interestRates = JSON.parse(val); } catch (e) { } }
+                    if (row.key === 'interest_rates') {
+                        try { settings.interestRates = JSON.parse(val); }
+                        catch (e) { console.error("[LOAD] Failed to parse interest_rates", e); }
+                    }
                     else if (row.key === 'late_payment_fine') settings.latePaymentFine = Number(val);
                     else if (row.key === 'grace_period_days') settings.gracePeriodDays = Number(val);
-                    else if (row.key === 'default_agent_fee') settings.defaultAgentFee = Number(val);
+                    else if (row.key === 'default_introducer_fee') settings.defaultIntroducerFee = Number(val);
+                    else if (row.key === 'messaging') {
+                        try {
+                            settings.messaging = JSON.parse(val);
+                            console.log("[LOAD] Parsed Messaging Config:", settings.messaging);
+                        }
+                        catch (e) {
+                            console.error("[LOAD] Failed to parse messaging JSON:", val, e);
+                        }
+                    }
                 });
             }
         }
 
-        return { members, accounts, interactions, settings, ledger, branches, agents, groups };
+        return { members, accounts, interactions, settings, ledger, branches, groups };
     } catch (error) {
         console.error("Critical: Failed to load data from Supabase", error);
         // Fail gracefully
@@ -535,13 +525,10 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             interactions: [...cache.interactions],
             ledger: [...cache.ledger],
             branches: [...cache.branches],
-            agents: [...cache.agents],
             groups: [...cache.groups]
         };
     }
 };
-
-// CRITICAL UPDATE: All upsert functions now check for Local Mode first.
 
 export const upsertMember = async (member: Member) => {
     if (!isSupabaseConfigured()) {
@@ -691,27 +678,7 @@ export const upsertBranch = async (branch: Branch) => {
     if (error) throw error;
 };
 
-export const upsertAgent = async (agent: Agent) => {
-    if (!isSupabaseConfigured()) {
-        const cache = getMemoryCache();
-        const idx = cache.agents.findIndex((a: Agent) => a.id === agent.id);
-        if (idx >= 0) cache.agents[idx] = agent; else cache.agents.push(agent);
-        return;
-    }
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('agents').upsert(mapAgentToDB(agent));
-    if (error) throw error;
-};
 
-export const bulkUpsertAgents = async (agents: Agent[]) => {
-    if (!isSupabaseConfigured()) {
-        for (const a of agents) await upsertAgent(a);
-        return;
-    }
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('agents').upsert(agents.map(mapAgentToDB));
-    if (error) throw error;
-};
 
 export const saveSettings = async (settings: AppSettings) => {
     if (!isSupabaseConfigured()) {
@@ -725,7 +692,7 @@ export const saveSettings = async (settings: AppSettings) => {
         { key: 'late_payment_fine', value: String(settings.latePaymentFine) },
         { key: 'grace_period_days', value: String(settings.gracePeriodDays) },
         { key: 'interest_rates', value: JSON.stringify(settings.interestRates) },
-        { key: 'default_agent_fee', value: String(settings.defaultAgentFee) },
+        { key: 'default_introducer_fee', value: String(settings.defaultIntroducerFee) },
         { key: 'messaging', value: JSON.stringify(settings.messaging || {}) }
     ];
 

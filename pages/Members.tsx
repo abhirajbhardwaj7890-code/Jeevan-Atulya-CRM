@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { MemberCard } from '../components/MemberCard';
 import { Search, Filter, UserPlus, Download, Users, X, CheckSquare, Square } from 'lucide-react';
-import { Member, UserRole, Agent, Interaction, MemberGroup, Branch } from '../types';
+import { Member, UserRole, Interaction, MemberGroup, Branch } from '../types';
 
 interface MembersProps {
   members: Member[];
-  agents?: Agent[];
+
   interactions?: Interaction[];
   userRole: UserRole;
   onSelectMember: (member: Member) => void;
@@ -16,7 +16,7 @@ interface MembersProps {
   branches?: Branch[]; // Added branches prop
 }
 
-export const Members: React.FC<MembersProps> = ({ members, agents = [], interactions = [], userRole, onSelectMember, onAddNew, groups = [], onUpdateGroup, onAddGroup, branches = [] }) => {
+export const Members: React.FC<MembersProps> = ({ members, interactions = [], userRole, onSelectMember, onAddNew, groups = [], onUpdateGroup, onAddGroup, branches = [] }) => {
   // Persistence Key
   const STORAGE_KEY = 'jeevan_atulya_members_filters';
 
@@ -341,7 +341,7 @@ export const Members: React.FC<MembersProps> = ({ members, agents = [], interact
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {filtered.map(member => {
           // Find additional details
-          const agentName = agents.find(a => a.id === member.agentId)?.name;
+          const introducerName = members.find(m => m.id === member.introducerId)?.fullName;
           const lastInteraction = interactions
             .filter(i => i.memberId === member.id)
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
@@ -350,7 +350,7 @@ export const Members: React.FC<MembersProps> = ({ members, agents = [], interact
             <MemberCard
               key={member.id}
               member={member}
-              agentName={agentName}
+              introducerName={introducerName}
               lastInteractionDate={lastInteraction?.date}
               onClick={() => {
                 // If in selection mode, clicking card toggles selection. Otherwise opens detail.

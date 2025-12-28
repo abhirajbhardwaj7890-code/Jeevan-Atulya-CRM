@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, Phone, Wallet, CheckCircle, Printer, X, Save, Users, Loader, AlertCircle, Search } from 'lucide-react';
-import { Member, AccountType, MemberDocument, AccountStatus, AppSettings, Agent } from '../types';
+import { ArrowLeft, User, Phone, Wallet, CheckCircle, Printer, Loader, AlertCircle, Save } from 'lucide-react';
+import { Member, AccountType, MemberDocument, AccountStatus, AppSettings } from '../types';
 import { createAccount } from '../services/data';
 import { formatDate } from '../services/utils';
 
@@ -10,12 +10,12 @@ interface NewMemberProps {
     onComplete: (member: Member, initialAccounts: any[], totalCollected: number, shouldNavigate?: boolean) => Promise<boolean>;
     settings?: AppSettings;
     nextId: string;
-    agents?: Agent[];
+    members?: Member[]; // Create dependency on Members for helper lookup
 }
 
 const RELATION_OPTIONS = ['Father', 'Mother', 'Husband', 'Wife', 'Son', 'Daughter', 'Brother', 'Sister', 'Uncle', 'Aunt', 'Nephew', 'Niece', 'Grandfather', 'Grandmother'];
 
-export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, settings, nextId, agents = [] }) => {
+export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, settings, nextId, members = [] }) => {
     const [step, setStep] = useState(1);
     const [showReceipt, setShowReceipt] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
@@ -33,8 +33,8 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         currentAddress: '',
         city: '',
         pinCode: '',
-        agentId: '', // Stores the actual agent ID (e.g. AG-123)
-        agentInput: '', // Stores what user types
+        introducerId: '', // Stores the actual Member ID of introducer
+        introducerInput: '', // Stores what user types
         residenceType: 'Owned' as 'Owned' | 'Rented',
         status: 'Active' as 'Active' | 'Suspended' | 'Pending',
         joinDate: new Date().toISOString().split('T')[0], // Default to today
@@ -79,7 +79,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         }
     };
 
-    const [resolvedAgentName, setResolvedAgentName] = useState<string | null>(null);
+    const [resolvedIntroducerName, setResolvedIntroducerName] = useState<string | null>(null);
     const [paymentSplit, setPaymentSplit] = useState({ cash: '', online: '' });
     const [sameAsPermanent, setSameAsPermanent] = useState(false);
 
@@ -90,22 +90,19 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
         }
     };
 
-    const handleAgentInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleIntroducerInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const val = e.target.value;
-        setFormData(prev => ({ ...prev, agentInput: val, agentId: '' })); // Reset ID when typing
-        setResolvedAgentName(null);
+        setFormData(prev => ({ ...prev, introducerInput: val, introducerId: '' })); // Reset ID when typing
+        setResolvedIntroducerName(null);
 
         if (!val) return;
 
-        // Try to find matching agent by ID or Member ID
-        const match = agents.find(a =>
-            a.id.toLowerCase() === val.toLowerCase() ||
-            (a.memberId && a.memberId === val)
-        );
+        // Try to find matching member by ID
+        const match = members.find(m => m.id === val);
 
         if (match) {
-            setResolvedAgentName(match.name);
-            setFormData(prev => ({ ...prev, agentInput: val, agentId: match.id }));
+            setResolvedIntroducerName(match.fullName);
+            setFormData(prev => ({ ...prev, introducerInput: val, introducerId: match.id }));
         }
     };
 
@@ -149,9 +146,9 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             return;
         }
 
-        // Agent Validation: If input provided but not resolved
-        if (formData.agentInput && !formData.agentId) {
-            const confirm = window.confirm("Agent ID entered but not found in system. Continue without assigning an agent?");
+        // Introducer Validation: If input provided but not resolved
+        if (formData.introducerInput && !formData.introducerId) {
+            const confirm = window.confirm("Introducer ID entered but not found in system. Continue without assigning an introducer?");
             if (!confirm) return;
         }
 
@@ -176,7 +173,7 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             avatarUrl: `https://ui-avatars.com/api/?name=${formData.firstName}+${formData.lastName}&background=random`,
             riskScore: 0,
             documents: [],
-            agentId: formData.agentId || undefined,
+            introducerId: formData.introducerId || undefined,
             // Add Nominee
             nominee: formData.nomineeName ? {
                 name: formData.nomineeName,
@@ -608,23 +605,28 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-1">Assigned Agent (ID or Member ID)</label>
+                                <label className="block text-sm font-medium text-slate-700 mb-1">Introducer Member ID</label>
                                 <div className="relative">
                                     <input
                                         type="text"
-                                        className={`w-full bg-white text-slate-900 border rounded-lg pl-3 pr-8 py-2.5 focus:ring-2 focus:outline-none ${resolvedAgentName ? 'border-green-500 ring-green-100' : 'border-slate-300 focus:ring-blue-500'}`}
-                                        value={formData.agentInput}
-                                        onChange={handleAgentInputChange}
-                                        placeholder="Search ID (e.g. AG-001 or 1001)"
+                                        className={`w-full bg-white text-slate-900 border rounded-lg pl-3 pr-8 py-2.5 focus:ring-2 focus:outline-none ${resolvedIntroducerName ? 'border-green-500 ring-green-100' : 'border-slate-300 focus:ring-blue-500'}`}
+                                        value={formData.introducerInput}
+                                        onChange={handleIntroducerInputChange}
+                                        placeholder="Enter Member ID (e.g. 1001)"
                                     />
-                                    {resolvedAgentName && (
+                                    {resolvedIntroducerName && (
                                         <div className="absolute right-3 top-1/2 -translate-y-1/2 text-green-600 pointer-events-none">
                                             <CheckCircle size={16} />
                                         </div>
                                     )}
                                 </div>
-                                {resolvedAgentName && <p className="text-xs text-green-600 mt-1 font-medium">Found: {resolvedAgentName}</p>}
-                                {!resolvedAgentName && formData.agentInput && <p className="text-xs text-red-500 mt-1">Agent not found</p>}
+                                {resolvedIntroducerName ? (
+                                    <p className="text-xs text-green-600 mt-1 font-medium">Found: {resolvedIntroducerName}</p>
+                                ) : formData.introducerInput ? (
+                                    <p className="text-xs text-red-500 mt-1">Member not found</p>
+                                ) : (
+                                    <p className="text-xs text-slate-500 mt-1">Optional. Leave blank if none.</p>
+                                )}
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-slate-700 mb-1">Status</label>
@@ -801,146 +803,133 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
                             </div>
                         ) : (
                             <>
-                                <div className="flex justify-between items-center mb-4">
-                                    <h3 className="text-lg font-bold text-slate-900">Initial Fees & Deposits</h3>
-                                    <div className="flex bg-slate-100 p-1 rounded-lg">
-                                        <button
-                                            type="button"
-                                            onClick={() => handlePlanChange('Standard')}
-                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${registrationPlan === 'Standard' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                        >
-                                            Standard (₹1550)
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => handlePlanChange('Basic')}
-                                            className={`px-3 py-1.5 rounded-md text-xs font-bold transition-all ${registrationPlan === 'Basic' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                                        >
-                                            Basic (₹700)
-                                        </button>
+                                <h3 className="text-lg font-bold text-slate-900 mb-4">Initial Fee Payment</h3>
+                                <div className="bg-slate-50 p-6 rounded-xl border border-slate-200">
+                                    <div className="flex justify-between items-center mb-4">
+                                        <h4 className="font-bold text-slate-700">Choose Plan</h4>
+                                        <div className="flex bg-white rounded-lg p-1 border border-slate-200">
+                                            <button
+                                                onClick={() => handlePlanChange('Standard')}
+                                                className={`px-3 py-1 text-sm rounded-md transition-all ${registrationPlan === 'Standard' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                                            >
+                                                Standard
+                                            </button>
+                                            <button
+                                                onClick={() => handlePlanChange('Basic')}
+                                                className={`px-3 py-1 text-sm rounded-md transition-all ${registrationPlan === 'Basic' ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}
+                                            >
+                                                Basic
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-300">
+                                            <span className="text-slate-600">Entry Charge (Non-Refundable)</span>
+                                            <span className="font-mono font-medium">₹{formData.entryCharge}</span>
+                                        </div>
+                                        {registrationPlan === 'Standard' && (
+                                            <>
+                                                <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-300">
+                                                    <span className="text-slate-600">Building Fund (Non-Refundable)</span>
+                                                    <span className="font-mono font-medium">₹{formData.buildingFund}</span>
+                                                </div>
+                                                <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-300">
+                                                    <span className="text-slate-600">Member Welfare Fund (Non-Refundable)</span>
+                                                    <span className="font-mono font-medium">₹{formData.welfareFund}</span>
+                                                </div>
+                                            </>
+                                        )}
+                                        <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-300">
+                                            <span className="text-slate-600">Share Money (Refundable)</span>
+                                            <span className="font-mono font-medium text-green-700">₹{formData.shareMoney}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pb-2 border-b border-dashed border-slate-300">
+                                            <span className="text-slate-600">Compulsory Deposit (Refundable)</span>
+                                            <span className="font-mono font-medium text-green-700">₹{formData.compulsoryDeposit}</span>
+                                        </div>
+                                        <div className="flex justify-between items-center pt-2 text-lg font-bold text-slate-900 border-t-2 border-slate-900">
+                                            <span>Total Payable</span>
+                                            <span>₹{totalAmount}</span>
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-                                    {[
-                                        { key: 'entryCharge', label: 'Admission Fee' },
-                                        { key: 'buildingFund', label: 'Building Fund' },
-                                        { key: 'welfareFund', label: 'Member Welfare Fund' },
-                                        { key: 'compulsoryDeposit', label: 'Compulsory Deposit (Refundable)', highlight: true },
-                                        { key: 'shareMoney', label: 'Share Money (Refundable)', highlight: true },
-                                    ].filter(item => (formData as any)[item.key] > 0).map((item, idx) => (
-                                        <div key={idx} className="flex justify-between items-center text-sm border-b border-slate-200 pb-2 last:border-0 last:pb-0">
-                                            <span className={item.highlight ? 'font-bold text-slate-700 pt-2' : 'text-slate-600 pt-2'}>{item.label}</span>
-                                            <div className="relative w-32">
-                                                <span className="absolute left-2 top-1.5 text-slate-400">₹</span>
+
+                                <div className="mt-6">
+                                    <label className="block text-sm font-medium text-slate-700 mb-2">Payment Method</label>
+                                    <div className="flex gap-4 mb-4">
+                                        {['Cash', 'Online', 'Both'].map(method => (
+                                            <label key={method} className={`flex items-center gap-2 px-4 py-3 rounded-xl border cursor-pointer transition-all ${formData.paymentMethod === method ? 'border-blue-500 bg-blue-50 text-blue-700 ring-1 ring-blue-500' : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'}`}>
+                                                <input
+                                                    type="radio"
+                                                    name="paymentMethod"
+                                                    value={method}
+                                                    checked={formData.paymentMethod === method}
+                                                    onChange={() => setFormData({ ...formData, paymentMethod: method as any })}
+                                                    className="w-4 h-4 text-blue-600"
+                                                />
+                                                <span className="font-medium">{method}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+
+                                    {formData.paymentMethod === 'Both' && (
+                                        <div className="grid grid-cols-2 gap-4 mb-4 animate-fade-in">
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">Cash Amount</label>
                                                 <input
                                                     type="number"
-                                                    className="w-full pl-6 pr-2 py-1 border border-slate-300 rounded text-right font-mono focus:outline-none focus:ring-1 focus:ring-blue-500 bg-slate-100 text-slate-500 cursor-not-allowed"
-                                                    value={(formData as any)[item.key]}
-                                                    readOnly
+                                                    className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2"
+                                                    value={paymentSplit.cash}
+                                                    onChange={e => setPaymentSplit({ ...paymentSplit, cash: e.target.value })}
+                                                />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-500 mb-1">Online Amount</label>
+                                                <input
+                                                    type="number"
+                                                    className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2"
+                                                    value={paymentSplit.online}
+                                                    onChange={e => setPaymentSplit({ ...paymentSplit, online: e.target.value })}
                                                 />
                                             </div>
                                         </div>
-                                    ))}
-                                    <div className="flex justify-between items-center pt-3 mt-2 border-t border-slate-300">
-                                        <span className="font-bold text-lg text-slate-900">Total Payable</span>
-                                        <span className="font-bold text-xl text-blue-600">₹{totalAmount.toFixed(2)}</span>
-                                    </div>
-                                </div>
+                                    )}
 
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">Payment Method</label>
-                                    <div className="flex gap-4">
-                                        {['Cash', 'Online', 'Both'].map(method => (
-                                            <button
-                                                key={method}
-                                                type="button"
-                                                onClick={() => setFormData({ ...formData, paymentMethod: method as any })}
-                                                className={`flex-1 py-2 border rounded-lg text-sm font-bold transition-all ${formData.paymentMethod === method
-                                                    ? 'bg-blue-600 text-white border-blue-600'
-                                                    : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
-                                                    }`}
-                                            >
-                                                {method}
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-
-                                {/* Split Payment Inputs */}
-                                {formData.paymentMethod === 'Both' && (
-                                    <div className="grid grid-cols-2 gap-4 animate-fade-in bg-slate-50 p-4 rounded-lg border border-slate-200">
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">Cash Portion</label>
+                                    {(formData.paymentMethod === 'Online' || formData.paymentMethod === 'Both') && (
+                                        <div className="animate-fade-in">
+                                            <label className="block text-sm font-medium text-slate-700 mb-1">UTR / Reference Number <span className="text-red-500">*</span></label>
                                             <input
-                                                type="number"
-                                                className="w-full border p-2 rounded-lg"
-                                                placeholder="0"
-                                                value={paymentSplit.cash}
-                                                onChange={e => setPaymentSplit({ ...paymentSplit, cash: e.target.value })}
+                                                type="text"
+                                                className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                                                value={formData.utrNumber}
+                                                onChange={e => setFormData({ ...formData, utrNumber: e.target.value })}
+                                                placeholder="Enter transaction reference ID"
+                                                required
                                             />
                                         </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-slate-500 mb-1">Online Portion</label>
-                                            <input
-                                                type="number"
-                                                className="w-full border p-2 rounded-lg"
-                                                placeholder="0"
-                                                value={paymentSplit.online}
-                                                onChange={e => setPaymentSplit({ ...paymentSplit, online: e.target.value })}
-                                            />
-                                        </div>
-                                        <div className="col-span-2 text-right text-xs">
-                                            <span className={`font-bold ${(parseFloat(paymentSplit.cash) || 0) + (parseFloat(paymentSplit.online) || 0) === totalAmount ? 'text-green-600' : 'text-red-600'}`}>
-                                                Sum: ₹{(parseFloat(paymentSplit.cash) || 0) + (parseFloat(paymentSplit.online) || 0)} / ₹{totalAmount}
-                                            </span>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* UTR Number for Online/Both */}
-                                {(formData.paymentMethod === 'Online' || formData.paymentMethod === 'Both') && (
-                                    <div className="animate-fade-in">
-                                        <label className="block text-sm font-medium text-slate-700 mb-1">UTR / Ref No. (Required)</label>
-                                        <input
-                                            type="text"
-                                            className="w-full bg-white text-slate-900 border border-slate-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:outline-none font-mono uppercase"
-                                            value={formData.utrNumber}
-                                            onChange={e => setFormData({ ...formData, utrNumber: e.target.value })}
-                                            placeholder="e.g. UTR12345678"
-                                        />
-                                    </div>
-                                )}
-
-                                <div className="bg-amber-50 p-4 rounded-lg flex gap-3 text-amber-800 text-sm">
-                                    <CheckCircle className="shrink-0" size={20} />
-                                    <p>By clicking "Register & Pay", the system will attempt to save the member data to the secure database. A receipt will be generated only after successful confirmation.</p>
+                                    )}
                                 </div>
                             </>
                         )}
                     </div>
                 )}
 
-                {/* Navigation Buttons */}
                 <div className="flex justify-between mt-8 pt-4 border-t border-slate-100">
                     {step > 1 ? (
-                        <button onClick={handleBack} className="px-6 py-2 text-slate-600 hover:bg-slate-100 rounded-lg font-medium transition-colors" disabled={isSaving}>
+                        <button onClick={handleBack} className="px-6 py-2 border border-slate-300 rounded-lg text-slate-600 font-medium hover:bg-slate-50 transition-colors">
                             Back
                         </button>
                     ) : (
-                        <div />
+                        <div></div>
                     )}
 
                     {step < 3 ? (
-                        <button onClick={handleNext} className="px-6 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 font-medium transition-colors flex items-center gap-2">
-                            Next Step
+                        <button onClick={handleNext} className="px-6 py-2 bg-slate-900 text-white rounded-lg font-medium hover:bg-slate-800 transition-colors flex items-center gap-2">
+                            Next <ArrowLeft size={16} className="rotate-180" />
                         </button>
                     ) : (
-                        <button
-                            onClick={handleSubmit}
-                            disabled={isSaving}
-                            className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-bold transition-colors flex items-center gap-2 disabled:opacity-50"
-                        >
-                            {isSaving ? 'Processing...' : formData.status === 'Pending' ? 'Save as Pending' : 'Register & Pay'}
+                        <button onClick={handleSubmit} disabled={isSaving} className="px-6 py-2 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 transition-colors flex items-center gap-2 shadow-lg shadow-green-200 disabled:opacity-70 disabled:cursor-not-allowed">
+                            {isSaving ? 'Registering...' : formData.status === 'Pending' ? 'Register as Pending' : 'Register & Pay'}
                         </button>
                     )}
                 </div>

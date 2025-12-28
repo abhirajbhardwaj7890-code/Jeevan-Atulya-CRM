@@ -23,14 +23,13 @@ import {
     upsertLedgerEntry,
     upsertTransaction,
     upsertBranch,
-    upsertAgent,
     saveSettings,
     createAccount,
     DEFAULT_SETTINGS,
     upsertGroup,
     deleteGroup
 } from './services/data';
-import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Agent, Notification, MemberGroup } from './types';
+import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Notification, MemberGroup } from './types';
 import { Menu, RefreshCw } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -52,7 +51,6 @@ const App: React.FC = () => {
 
     // Network State
     const [branches, setBranches] = useState<Branch[]>([]);
-    const [agents, setAgents] = useState<Agent[]>([]);
     const [groups, setGroups] = useState<MemberGroup[]>([]);
 
     const [selectedMember, setSelectedMember] = useState<Member | null>(null);
@@ -364,7 +362,6 @@ const App: React.FC = () => {
                 setSettings(data.settings);
                 setLedger(data.ledger);
                 setBranches(data.branches);
-                setAgents(data.agents);
                 setGroups(data.groups);
                 runScheduledTasks(data.accounts, data.members);
             } catch (e) {
@@ -388,7 +385,6 @@ const App: React.FC = () => {
             setSettings(data.settings);
             setLedger(data.ledger);
             setBranches(data.branches);
-            setAgents(data.agents);
             setGroups(data.groups);
             runScheduledTasks(data.accounts, data.members);
         } catch (e) {
@@ -745,19 +741,14 @@ const App: React.FC = () => {
 
     };
 
+
+
     const handleAddBranch = async (branch: Branch) => {
         setBranches([...branches, branch]);
         await upsertBranch(branch);
     };
 
-    const handleAddAgent = async (agent: Agent) => {
-        setAgents(prev => {
-            const exists = prev.find(a => a.id === agent.id);
-            if (exists) return prev.map(a => a.id === agent.id ? agent : a);
-            return [...prev, agent];
-        });
-        await upsertAgent(agent);
-    };
+
 
     const handleAddGroup = async (group: MemberGroup) => {
         setGroups(prev => [...prev, group]);
@@ -835,7 +826,6 @@ const App: React.FC = () => {
                 {currentPage === 'members' && (
                     <Members
                         members={members}
-                        agents={agents}
                         interactions={interactions}
                         userRole={userRole}
                         onSelectMember={handleSelectMember}
@@ -850,7 +840,7 @@ const App: React.FC = () => {
                         onComplete={handleAddMember}
                         settings={settings}
                         nextId={nextMemberId}
-                        agents={agents}
+                        members={members}
                     />
                 )}
 
@@ -862,7 +852,6 @@ const App: React.FC = () => {
                         allMembers={members}
                         accounts={memberAccounts}
                         interactions={memberInteractions}
-                        agents={agents}
                         ledger={ledger}
                         onBack={() => handleNavigate('members')}
                         onAddInteraction={handleAddInteraction}
@@ -893,18 +882,16 @@ const App: React.FC = () => {
                 )}
 
                 {currentPage === 'reports' && (
-                    <Reports accounts={accounts} members={members} ledger={ledger} agents={agents} />
+                    <Reports accounts={accounts} members={members} ledger={ledger} />
                 )}
 
                 {currentPage === 'network' && (
                     <Network
                         branches={branches}
-                        agents={agents}
                         members={members}
                         accounts={accounts}
                         settings={settings}
                         onAddBranch={handleAddBranch}
-                        onAddAgent={handleAddAgent}
                     />
                 )}
 

@@ -10,11 +10,11 @@ interface MemberCardProps {
   selected?: boolean;
   onToggleSelect?: (e: React.MouseEvent) => void;
   selectionMode?: boolean;
-  agentName?: string;
+  introducerName?: string;
   lastInteractionDate?: string;
 }
 
-export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick, selected, onToggleSelect, selectionMode, agentName, lastInteractionDate }) => {
+export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick, selected, onToggleSelect, selectionMode, introducerName, lastInteractionDate }) => {
   // Show checkbox if explicitly in selection mode, if the item is selected, or on hover
   const showCheckbox = selectionMode || selected || onToggleSelect;
 
@@ -72,9 +72,9 @@ export const MemberCard: React.FC<MemberCardProps> = ({ member, onClick, selecte
         </div>
 
         <div className="pt-2 mt-2 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-          <div className="flex items-center gap-1.5" title="Assigned Agent">
+          <div className="flex items-center gap-1.5" title="Introducer">
             <User size={12} className="text-slate-400" />
-            <span className="truncate">{agentName || 'Unassigned'}</span>
+            <span className="truncate">{introducerName || 'Unassigned'}</span>
           </div>
           <div className="flex items-center gap-1.5" title="Last Interaction">
             <Clock size={12} className="text-slate-400" />
