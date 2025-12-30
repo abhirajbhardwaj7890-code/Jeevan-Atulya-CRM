@@ -1452,19 +1452,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
             await onAddTransaction(transForm.accountId, newTx);
 
-            if (type === 'debit') {
-                await onAddLedgerEntry({
-                    id: `LDG-WDL-${Date.now()}`,
-                    date: transForm.date,
-                    description: `Withdrawal - ${member.fullName} (${account.accountNumber})`,
-                    amount: amt,
-                    type: 'Expense',
-                    category: 'Member Withdrawals',
-                    cashAmount: transForm.paymentMethod === 'Both' ? (parseFloat(transForm.cashAmount) || 0) : (transForm.paymentMethod === 'Cash' ? amt : 0),
-                    onlineAmount: transForm.paymentMethod === 'Both' ? (parseFloat(transForm.onlineAmount) || 0) : (transForm.paymentMethod === 'Online' ? amt : 0),
-                    utrNumber: transForm.utrNumber
-                });
-            }
+
 
             setTransactionSuccess({
                 txId,

@@ -45,12 +45,12 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
     // Filter and Aggregate Data
     const reportData = useMemo(() => {
         const results: any[] = [];
+        const registrationMap = new Map<string, any>();
         let totalCash = 0;
         let totalOnline = 0;
 
         const start = new Date(dateRange.start);
         const end = new Date(dateRange.end);
-        // Normalize times for accurate comparison
         start.setHours(0, 0, 0, 0);
         end.setHours(23, 59, 59, 999);
 
@@ -61,15 +61,6 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                 const txDate = new Date(tx.date);
                 // Check if date is within range
                 if (txDate >= start && txDate <= end && tx.type === 'credit') {
-
-                    // Exclude Opening Balances for CD/SM as per original logic (avoid double count with registration fee if handled elsewhere)
-                    // Ensuring we don't count "Opening Balance" entries that are just initializations, unless they are actual payments.
-                    const isOpeningBalance = tx.category === 'Opening Balance' || (tx.description && tx.description.includes('Opening Balance'));
-                    const isCDorSM = acc.type === AccountType.COMPULSORY_DEPOSIT || acc.type === AccountType.SHARE_CAPITAL;
-
-                    if (isOpeningBalance && isCDorSM) {
-                        return;
-                    }
 
                     const cash = tx.cashAmount ?? (tx.paymentMethod === 'Cash' ? tx.amount : 0);
                     const online = tx.onlineAmount ?? (tx.paymentMethod === 'Online' ? tx.amount : 0);
@@ -85,20 +76,48 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                     totalCash += finalCash;
                     totalOnline += finalOnline;
 
-                    results.push({
-                        id: tx.id,
-                        date: tx.date,
-                        accountNo: acc.accountNumber,
-                        accountType: acc.type,
-                        memberId: member?.id || 'N/A',
-                        memberName: member?.fullName || 'Unknown',
-                        description: tx.description,
-                        category: tx.category || 'Transaction',
-                        mode: finalCash > 0 && finalOnline > 0 ? 'Both' : (finalCash > 0 ? 'Cash' : 'Online'),
-                        cash: finalCash,
-                        online: finalOnline,
-                        amount: tx.amount
-                    });
+                    const isOpeningBalance = tx.category === 'Opening Balance' || (tx.description && tx.description.includes('Opening Balance'));
+                    const isCDorSM = acc.type === AccountType.COMPULSORY_DEPOSIT || acc.type === AccountType.SHARE_CAPITAL;
+
+                    if (isOpeningBalance && isCDorSM) {
+                        const key = `${tx.date}_${acc.memberId}`;
+                        if (!registrationMap.has(key)) {
+                            registrationMap.set(key, {
+                                id: `REG-${tx.date}-${acc.memberId}`,
+                                date: tx.date,
+                                accountNo: '-',
+                                accountType: 'Registration',
+                                memberId: acc.memberId,
+                                memberName: member?.fullName || 'Unknown',
+                                description: 'New Membership Registration (Fees + Deposit)',
+                                category: 'Member Registration',
+                                mode: 'Cash',
+                                cash: 0,
+                                online: 0,
+                                amount: 0
+                            });
+                        }
+                        const reg = registrationMap.get(key);
+                        reg.cash += finalCash;
+                        reg.online += finalOnline;
+                        reg.amount += tx.amount;
+                        reg.mode = reg.cash > 0 && reg.online > 0 ? 'Both' : (reg.cash > 0 ? 'Cash' : 'Online');
+                    } else {
+                        results.push({
+                            id: tx.id,
+                            date: tx.date,
+                            accountNo: acc.accountNumber,
+                            accountType: acc.type,
+                            memberId: member?.id || 'N/A',
+                            memberName: member?.fullName || 'Unknown',
+                            description: tx.description,
+                            category: tx.category || 'Transaction',
+                            mode: finalCash > 0 && finalOnline > 0 ? 'Both' : (finalCash > 0 ? 'Cash' : 'Online'),
+                            cash: finalCash,
+                            online: finalOnline,
+                            amount: tx.amount
+                        });
+                    }
                 }
             });
         });
@@ -108,8 +127,17 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
             const entryDate = new Date(entry.date);
             if (entryDate >= start && entryDate <= end && entry.type === 'Income') {
 
-                // CRITICAL: Skip if it's linked to a member, assuming Account Transaction already captured it.
-                if (entry.memberId) {
+                const autoCategories = [
+                    'Member Deposit',
+                    'Member Deposits',
+                    'Member Withdrawal',
+                    'Loan Repayment',
+                    'Loan Disbursement',
+                    'Fees & Fines',
+                    'Admission Fees & Deposits'
+                ];
+
+                if (autoCategories.includes(entry.category)) {
                     return;
                 }
 
@@ -119,29 +147,58 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                 let finalCash = cash;
                 let finalOnline = online;
                 if (cash === 0 && online === 0 && entry.amount > 0) {
-                    // Assume Cash if not specified for simple ledger entries? Or standard logic
-                    finalCash = entry.amount; // Defaulting to amount if breakdown missing
+                    finalCash = entry.amount;
                 }
 
                 totalCash += finalCash;
                 totalOnline += finalOnline;
 
-                results.push({
-                    id: entry.id,
-                    date: entry.date,
-                    accountNo: 'LEDGER',
-                    accountType: 'General Income',
-                    memberId: '-',
-                    memberName: 'Society',
-                    description: entry.description,
-                    category: entry.category,
-                    mode: finalCash > 0 && finalOnline > 0 ? 'Both' : (finalCash > 0 ? 'Cash' : 'Online'),
-                    cash: finalCash,
-                    online: finalOnline,
-                    amount: entry.amount
-                });
+                if (entry.category === 'Admission Fees' && entry.memberId) {
+                    const key = `${entry.date}_${entry.memberId}`;
+                    if (!registrationMap.has(key)) {
+                        const member = members.find(m => m.id === entry.memberId);
+                        registrationMap.set(key, {
+                            id: `REG-${entry.date}-${entry.memberId}`,
+                            date: entry.date,
+                            accountNo: '-',
+                            accountType: 'Registration',
+                            memberId: entry.memberId,
+                            memberName: member?.fullName || 'Unknown',
+                            description: 'New Membership Registration (Fees + Deposit)',
+                            category: 'Member Registration',
+                            mode: 'Cash',
+                            cash: 0,
+                            online: 0,
+                            amount: 0
+                        });
+                    }
+                    const reg = registrationMap.get(key);
+                    reg.cash += finalCash;
+                    reg.online += finalOnline;
+                    reg.amount += entry.amount;
+                    reg.mode = reg.cash > 0 && reg.online > 0 ? 'Both' : (reg.cash > 0 ? 'Cash' : 'Online');
+                } else {
+                    const member = entry.memberId ? members.find(m => m.id === entry.memberId) : null;
+                    results.push({
+                        id: entry.id,
+                        date: entry.date,
+                        accountNo: 'LEDGER',
+                        accountType: member ? 'Member Payment' : 'General Income',
+                        memberId: member?.id || '-',
+                        memberName: member?.fullName || 'Society',
+                        description: entry.description,
+                        category: entry.category,
+                        mode: finalCash > 0 && finalOnline > 0 ? 'Both' : (finalCash > 0 ? 'Cash' : 'Online'),
+                        cash: finalCash,
+                        online: finalOnline,
+                        amount: entry.amount
+                    });
+                }
             }
         });
+
+        // Add merged registrations
+        registrationMap.forEach(reg => results.push(reg));
 
         // Sort by Date Descending, then Name
         results.sort((a, b) => {
@@ -280,8 +337,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                                 key={type}
                                 onClick={() => setReportType(type)}
                                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${reportType === type
-                                        ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'text-slate-400 hover:text-white hover:bg-slate-700'
+                                    ? 'bg-blue-600 text-white shadow-sm'
+                                    : 'text-slate-400 hover:text-white hover:bg-slate-700'
                                     }`}
                             >
                                 {type}
@@ -386,8 +443,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                                     <td className="px-6 py-3 border-b border-slate-50">
                                         <div className="text-slate-700 text-sm">{item.description}</div>
                                         <div className="flex items-center gap-2 mt-1">
-                                            <span className={`text-[10px] font-bold uppercase ${item.mode === 'Cash' ? 'text-emerald-600' :
-                                                    item.mode === 'Online' ? 'text-blue-600' : 'text-purple-600'
+                                            <span className={`text-[10px] font-bold uppercase tracking-wider ${item.mode === 'Cash' ? 'bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded' :
+                                                item.mode === 'Online' ? 'bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded' : 'bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded'
                                                 }`}>
                                                 {item.mode}
                                             </span>

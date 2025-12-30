@@ -567,6 +567,7 @@ const App: React.FC = () => {
         if ((accountData.balance || 0) > 0 && accountData.type !== AccountType.LOAN) {
             const ledgerEntry: LedgerEntry = {
                 id: `LDG-ACC-${Date.now()}`,
+                memberId: memberId,
                 date: openingDate, // Use opening date for ledger entry
                 description: `New ${accountData.type} Opening - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`,
                 amount: accountData.balance || 0,
@@ -653,11 +654,15 @@ const App: React.FC = () => {
 
         const newLedgerEntry: LedgerEntry = {
             id: `LDG-AUTO-${Date.now()}`,
+            memberId: account.memberId,
             date: transactionData.date || new Date().toISOString().split('T')[0],
             description: `Auto: ${transactionData.description} (${account.accountNumber})`,
             amount: txAmount,
             type: ledgerType,
-            category: ledgerCategory
+            category: ledgerCategory,
+            cashAmount: transactionData.paymentMethod === 'Cash' ? txAmount : (transactionData.paymentMethod === 'Both' ? (transactionData as any).cashAmount : 0),
+            onlineAmount: transactionData.paymentMethod === 'Online' ? txAmount : (transactionData.paymentMethod === 'Both' ? (transactionData as any).onlineAmount : 0),
+            utrNumber: transactionData.utrNumber
         };
 
         // Update state
