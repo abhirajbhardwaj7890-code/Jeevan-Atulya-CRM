@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS members (
     status TEXT DEFAULT 'Active' CHECK (status IN ('Active', 'Pending', 'Inactive')),
     avatar_url TEXT,
     risk_score INTEGER DEFAULT 0,
-    agent_id TEXT,
+    introducer_id TEXT,
     residence_type TEXT,
     last_printed_transaction_id TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

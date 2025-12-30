@@ -18,7 +18,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, userRole, onNaviga
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['Admin', 'Staff'] },
     { id: 'members', label: 'Members', icon: Users, roles: ['Admin', 'Staff'] },
     { id: 'groups', label: 'Groups', icon: Users, roles: ['Admin', 'Staff'] },
-    { id: 'network', label: 'Branches & Agents', icon: Network, roles: ['Admin', 'Staff'] },
+    { id: 'network', label: 'Branches & Introducers', icon: Network, roles: ['Admin', 'Staff'] },
     { id: 'accounts', label: 'All Accounts', icon: PieChart, roles: ['Admin'] }, // Restricted to Admin for global view
     { id: 'accounting', label: 'Accounting', icon: Calculator, roles: ['Admin', 'Staff'] },
     { id: 'reports', label: 'Reports', icon: Activity, roles: ['Admin'] }, // Restricted to Admin
