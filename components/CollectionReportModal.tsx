@@ -156,7 +156,13 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                     if (member && member.status !== 'Active') {
                         return;
                     }
-                    if (autoCategories.includes(entry.category)) {
+                    
+                    const normalizedCategory = entry.category.toLowerCase().trim();
+                    const isAutoCategory = autoCategories.some(cat => 
+                        normalizedCategory.includes(cat.toLowerCase().trim())
+                    );
+
+                    if (isAutoCategory || normalizedCategory === 'admission fees & deposits') {
                         return;
                     }
                 }
@@ -176,7 +182,9 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                     totalOnline += finalOnline;
                 }
 
-                if (entry.category === 'Admission Fees' && entry.memberId) {
+                const isAdmissionFee = entry.category.toLowerCase().trim() === 'admission fees';
+
+                if (isAdmissionFee && entry.memberId) {
                     const key = `${entry.date}_${entry.memberId}`;
                     if (!registrationMap.has(key)) {
                         const member = members.find(m => m.id === entry.memberId);

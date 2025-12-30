@@ -3,7 +3,7 @@ import { Member, Account, Interaction, Transaction, AccountType, AccountStatus, 
 import { generateMemberSummary, analyzeFinancialHealth, draftInteractionNote, calculateMemberRisk } from '../services/gemini';
 import { formatDate, parseSafeDate } from '../services/utils';
 import { upsertTransaction } from '../services/data';
-import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search, DollarSign, XCircle } from 'lucide-react';
+import { Sparkles, ArrowLeft, Phone, Mail, Plus, CreditCard, Clock, X, Check, AlertTriangle, Pencil, Download, BookOpen, Printer, Wallet, User, TrendingUp, Calendar, Trash2, FileText, ChevronDown, ChevronUp, Lock, Users, ArrowUpRight, ArrowDownLeft, Upload, Calculator, AlertCircle, PieChart, Info, MapPin, Target, Shield, PiggyBank, MousePointerClick, AlignVerticalSpaceAround, History, RotateCcw, CheckCircle, Search, DollarSign, XCircle, Settings } from 'lucide-react';
 
 interface MemberDetailProps {
     member: Member;
@@ -144,6 +144,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const [isSubmittingTransaction, setIsSubmittingTransaction] = useState(false);
     const [isSubmittingAccount, setIsSubmittingAccount] = useState(false);
     const [isActivating, setIsActivating] = useState(false);
+    const [showCorrectionModal, setShowCorrectionModal] = useState(false);
+    const [isCorrecting, setIsCorrecting] = useState(false);
+    const [targetPlan, setTargetPlan] = useState<'Standard' | 'Basic'>('Basic');
 
     // Account Modal State (Wizard)
     const [showAccountModal, setShowAccountModal] = useState(false);
@@ -1485,6 +1488,82 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         }
     };
 
+
+    const handleCorrectPlan = async () => {
+        if (isCorrecting) return;
+
+        const isToBasic = targetPlan === 'Basic';
+        const newTotalFees = isToBasic ? 700 : 1550;
+        const newAdmissionIncome = isToBasic ? 100 : 950;
+        const depositInflow = 600;
+
+        setIsCorrecting(true);
+        try {
+            // Find existing ledger entries for this member's registration
+            let regEntries = (ledger || []).filter(l => l.memberId === member.id && (l.category === 'Admission Fees' || l.category === 'Admission Fees & Deposits'));
+
+            if (regEntries.length === 0) {
+                // Try fallback matching by description/date if memberId was missing
+                const joinDateStr = member.joinDate.split('T')[0];
+                regEntries = (ledger || []).filter(l =>
+                    l.description.includes(member.fullName) &&
+                    l.date.startsWith(joinDateStr) &&
+                    (l.category === 'Admission Fees' || l.category === 'Admission Fees & Deposits')
+                );
+            }
+
+            if (regEntries.length === 0) {
+                alert("Could not find the registration ledger entries for this member. Please correct manually in Accounting.");
+                return;
+            }
+
+            // Update Admission Fees Entry
+            const admissionEntry = regEntries.find(l => l.category === 'Admission Fees');
+            if (admissionEntry) {
+                await onAddLedgerEntry({
+                    ...admissionEntry,
+                    amount: newAdmissionIncome,
+                    description: `Admission Fee (${targetPlan} Plan) - ${member.fullName}`,
+                    cashAmount: admissionEntry.cashAmount ? newAdmissionIncome : 0, // Simplified update
+                    onlineAmount: admissionEntry.onlineAmount ? newAdmissionIncome : 0
+                });
+            } else {
+                // If missing, create one
+                await onAddLedgerEntry({
+                    id: `LDG-ACT-FIX-${Date.now()}`,
+                    memberId: member.id,
+                    date: member.joinDate.split('T')[0],
+                    amount: newAdmissionIncome,
+                    type: 'Income',
+                    category: 'Admission Fees',
+                    description: `Admission Fee (${targetPlan} Plan) - ${member.fullName}`
+                });
+            }
+
+            // Deposit entry (600) usually remains the same, but let's ensure it exists
+            const depositEntry = regEntries.find(l => l.category === 'Admission Fees & Deposits');
+            if (!depositEntry) {
+                await onAddLedgerEntry({
+                    id: `LDG-DEP-FIX-${Date.now()}`,
+                    memberId: member.id,
+                    date: member.joinDate.split('T')[0],
+                    amount: depositInflow,
+                    type: 'Income',
+                    category: 'Admission Fees & Deposits',
+                    description: `Initial Deposit (SM/CD) - ${member.fullName}`
+                });
+            }
+
+            alert(`Member registration plan corrected to ${targetPlan}. Total Fees: ₹${newTotalFees}`);
+            setShowCorrectionModal(false);
+        } catch (error: any) {
+            console.error("Correction failed:", error);
+            alert("Failed to correct plan: " + error.message);
+        } finally {
+            setIsCorrecting(false);
+        }
+    };
+
     const handlePrintSuccessReceipt = () => {
         if (!transactionSuccess) return;
         const acc = accounts.find(a => a.accountNumber === transactionSuccess.accountNumber);
@@ -1994,6 +2073,23 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 )}
 
                 <div className="flex gap-2">
+                    {userRole === 'Admin' && (
+                        <button
+                            onClick={() => {
+                                // Determine current plan based on ledger or total
+                                const currentRegTotal = (ledger || [])
+                                    .filter(l => l.memberId === member.id && (l.category === 'Admission Fees' || l.category === 'Admission Fees & Deposits'))
+                                    .reduce((sum, l) => sum + l.amount, 0);
+
+                                setTargetPlan(currentRegTotal >= 1500 ? 'Basic' : 'Standard');
+                                setShowCorrectionModal(true);
+                            }}
+                            className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 text-sm font-medium flex items-center gap-2"
+                            title="Correct Registration Plan"
+                        >
+                            <Settings size={16} /> Correct Plan
+                        </button>
+                    )}
                     <button className="px-4 py-2 bg-white border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-sm font-medium flex items-center gap-2"><Phone size={16} /> Call</button>
                     <button className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium flex items-center gap-2"><Mail size={16} /> Message</button>
                 </div>
@@ -3734,6 +3830,57 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                     </div>
                 );
             })()}
+            {/* Plan Correction Modal */}
+            {showCorrectionModal && (
+                <div className="fixed inset-0 bg-black/60 z-[70] flex items-center justify-center p-4 backdrop-blur-sm">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-slide-up">
+                        <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white">
+                            <h3 className="font-bold flex items-center gap-2"><Settings size={18} /> Correct Registration Plan</h3>
+                            <button onClick={() => setShowCorrectionModal(false)} className="hover:bg-white/10 p-1 rounded-full"><X size={20} /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex gap-3 items-start">
+                                <AlertTriangle className="text-amber-600 shrink-0" size={20} />
+                                <div className="text-xs text-amber-800">
+                                    <p className="font-bold mb-1">Warning: Origin Correction</p>
+                                    <p>This will update the underlying ledger records to change the membership "Plan" for <b>{member.fullName}</b>. This affects total fees and registration receipts.</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-3">
+                                <label className="block text-xs font-black text-slate-500 uppercase tracking-widest">Select Target Plan</label>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <button
+                                        onClick={() => setTargetPlan('Standard')}
+                                        className={`p-4 rounded-xl border-2 text-left transition-all ${targetPlan === 'Standard' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}
+                                    >
+                                        <div className={`font-bold ${targetPlan === 'Standard' ? 'text-blue-700' : 'text-slate-700'}`}>Standard</div>
+                                        <div className="text-[10px] text-slate-400 mt-1">Total Fee: ₹1550</div>
+                                    </button>
+                                    <button
+                                        onClick={() => setTargetPlan('Basic')}
+                                        className={`p-4 rounded-xl border-2 text-left transition-all ${targetPlan === 'Basic' ? 'border-blue-600 bg-blue-50' : 'border-slate-100 hover:border-slate-200'}`}
+                                    >
+                                        <div className={`font-bold ${targetPlan === 'Basic' ? 'text-blue-700' : 'text-slate-700'}`}>Basic</div>
+                                        <div className="text-[10px] text-slate-400 mt-1">Total Fee: ₹700</div>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div className="flex gap-3 pt-2">
+                                <button onClick={() => setShowCorrectionModal(false)} className="flex-1 py-3 border border-slate-300 rounded-xl text-slate-600 font-bold hover:bg-slate-50 transition-all">Cancel</button>
+                                <button
+                                    onClick={handleCorrectPlan}
+                                    disabled={isCorrecting}
+                                    className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg shadow-blue-200 transition-all flex items-center justify-center gap-2"
+                                >
+                                    {isCorrecting ? 'Correcting...' : 'Apply Correction'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
