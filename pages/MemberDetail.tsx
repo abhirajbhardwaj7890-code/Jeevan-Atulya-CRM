@@ -224,9 +224,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const handleSelectGuarantor = (slot: 'g1' | 'g2', member: Member) => {
         setGuarantors(prev => ({
             ...prev,
-            [`${slot} Name`]: member.fullName,
-            [`${slot} Phone`]: member.phone,
-            [`${slot} MemberId`]: member.id
+            [`${slot}Name`]: member.fullName,
+            [`${slot}Phone`]: member.phone,
+            [`${slot}MemberId`]: member.id
         }));
         setGuarantorSearch(prev => ({ ...prev, [slot]: '' }));
         if (slot === 'g1') setShowG1Results(false);
@@ -236,9 +236,9 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
     const clearGuarantor = (slot: 'g1' | 'g2') => {
         setGuarantors(prev => ({
             ...prev,
-            [`${slot} Name`]: '',
-            [`${slot} Phone`]: '',
-            [`${slot} MemberId`]: ''
+            [`${slot}Name`]: '',
+            [`${slot}Phone`]: '',
+            [`${slot}MemberId`]: ''
         }));
     };
 
@@ -1542,7 +1542,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
             termMonths = (parseFloat(accountForm.tenureYears) || 0) * 12;
         } else if (accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily') {
             termDays = parseInt(accountForm.tenureDays) || 0;
-            termMonths = Math.round(termDays / 30);
+            termMonths = Math.round(termDays / 30.4167);
         } else {
             termMonths = parseInt(accountForm.tenureMonths) || 0;
         }
@@ -1644,7 +1644,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 termMonths: accountForm.type === AccountType.FIXED_DEPOSIT
                     ? (parseFloat(accountForm.tenureYears) || 0) * 12
                     : accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
-                        ? Math.round((parseInt(accountForm.tenureDays) || 0) / 30.41)
+                        ? Math.round((parseInt(accountForm.tenureDays) || 0) / 30.4167)
                         : (parseInt(accountForm.tenureMonths) || 0),
                 tenureDays: accountForm.type === AccountType.RECURRING_DEPOSIT && accountForm.rdFrequency === 'Daily'
                     ? parseInt(accountForm.tenureDays) || 0
@@ -1833,7 +1833,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
             if (acc.rdFrequency === 'Daily') {
                 // Use explicit tenureDays if available, else fallback to termMonths conversion
-                const days = acc.tenureDays || (termMonths > 0 ? Math.round(termMonths * 30.41) : 0);
+                const days = acc.tenureDays || (termMonths > 0 ? Math.round(termMonths * 30.4167) : 0);
                 tenureText = days > 0 ? `${days} Days` : 'Not Set';
             } else {
                 tenureText = termMonths > 0 ? `${termMonths} Months` : 'Not Set';

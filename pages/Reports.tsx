@@ -26,8 +26,14 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) =
     const [showDayWiseModal, setShowDayWiseModal] = useState(false);
     const [reportDate, setReportDate] = useState(new Date().toISOString().split('T')[0]);
 
-    // Filtering Logic based on account creation date (uses joinDate for approximation)
-    const filteredAccounts = accounts;
+    // Filtering Logic based on account status and member status
+    const filteredAccounts = useMemo(() => {
+        const activeMemberIds = members.filter(m => m.status === 'Active').map(m => m.id);
+        return accounts.filter(a =>
+            a.status === 'Active' &&
+            activeMemberIds.includes(a.memberId)
+        );
+    }, [accounts, members]);
 
     // Calculate stats based on filtered data
     const accountsByType = filteredAccounts.reduce((acc, curr) => {
@@ -49,13 +55,14 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) =
         return { name: type, value, count: loanAccs.length };
     });
 
-    // Calculate Monthly Growth from Transaction History
+    // Calculate Monthly Growth from Transaction History - Filtered for active members and accounts
     const monthlyGrowth = useMemo(() => {
         const today = new Date();
         const last6Months = [];
 
-        // Group transactions
-        const allTxs = accounts.flatMap(a => a.transactions);
+        const activeMemberIds = members.filter(m => m.status === 'Active').map(m => m.id);
+        const activeAccountIds = accounts.filter(a => a.status === 'Active' && activeMemberIds.includes(a.memberId)).map(a => a.id);
+        const allTxs = accounts.filter(a => activeAccountIds.includes(a.id)).flatMap(a => a.transactions);
 
         for (let i = 5; i >= 0; i--) {
             const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
@@ -83,9 +90,9 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) =
     }, [accounts]);
 
     const riskDistribution = [
-        { range: 'Low (0-30)', count: members.filter(m => (m.riskScore || 0) <= 30).length },
-        { range: 'Medium (31-70)', count: members.filter(m => (m.riskScore || 0) > 30 && (m.riskScore || 0) <= 70).length },
-        { range: 'High (70+)', count: members.filter(m => (m.riskScore || 0) > 70).length },
+        { range: 'Low (0-30)', count: members.filter(m => m.status === 'Active' && (m.riskScore || 0) <= 30).length },
+        { range: 'Medium (31-70)', count: members.filter(m => m.status === 'Active' && (m.riskScore || 0) > 30 && (m.riskScore || 0) <= 70).length },
+        { range: 'High (70+)', count: members.filter(m => m.status === 'Active' && (m.riskScore || 0) > 70).length },
     ];
 
     const handleExportReport = () => {
@@ -293,7 +300,7 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) =
                                 {(() => {
                                     // Calculate Top Introducers
                                     const introducerCounts: Record<string, number> = {};
-                                    members.forEach(m => {
+                                    members.filter(m => m.status === 'Active').forEach(m => {
                                         if (m.introducerId) {
                                             introducerCounts[m.introducerId] = (introducerCounts[m.introducerId] || 0) + 1;
                                         }
@@ -317,9 +324,9 @@ export const Reports: React.FC<ReportsProps> = ({ accounts, members, ledger }) =
                                         const introducer = members.find(m => m.id === introId);
                                         // Calculate collections from introduced members
                                         // This is an approximation based on members introduced by this person
-                                        const introducedMemberIds = members.filter(m => m.introducerId === introId).map(m => m.id);
+                                        const introducedMemberIds = members.filter(m => m.introducerId === introId && m.status === 'Active').map(m => m.id);
                                         const collectionAmount = accounts
-                                            .filter(a => introducedMemberIds.includes(a.memberId))
+                                            .filter(a => introducedMemberIds.includes(a.memberId) && a.status === 'Active')
                                             .flatMap(a => a.transactions)
                                             .filter(t => t.type === 'credit')
                                             .reduce((sum, t) => sum + t.amount, 0);

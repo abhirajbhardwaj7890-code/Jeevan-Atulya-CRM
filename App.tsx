@@ -539,6 +539,7 @@ const App: React.FC = () => {
             rdFrequency: accountData.rdFrequency,
             guarantors: accountData.guarantors,
             termMonths: accountData.termMonths,
+            tenureDays: accountData.tenureDays,
             interestRate: accountData.interestRate,
             date: openingDate, // Pass opening date to createAccount
             paymentMethod: accountData.paymentMethod,
@@ -718,7 +719,7 @@ const App: React.FC = () => {
 
             await upsertMember(updatedMember);
 
-            if (updatedMember.status === 'Suspended') {
+            if (updatedMember.status === 'Suspended' || updatedMember.status === 'Pending') {
                 const accountsToSuspend: Account[] = [];
                 setAccounts(prevAccounts => prevAccounts.map(a => {
                     if (a.memberId === updatedMember.id && a.status === AccountStatus.ACTIVE) {
@@ -886,7 +887,7 @@ const App: React.FC = () => {
                 )}
 
                 {currentPage === 'accounting' && (
-                    <Accounting ledger={ledger} onAddEntry={handleAddLedgerEntry} />
+                    <Accounting ledger={ledger} members={members} onAddEntry={handleAddLedgerEntry} />
                 )}
 
                 {currentPage === 'reports' && (

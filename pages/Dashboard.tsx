@@ -24,13 +24,18 @@ const formatDate = (dateStr?: string) => {
 };
 
 export const Dashboard: React.FC<DashboardProps> = ({ members, accounts, interactions, branches }) => {
-  const totalAssets = accounts.reduce((acc, curr) => curr.type !== 'Loan' ? acc + curr.balance : acc, 0);
-  const totalLoans = accounts.filter(a => a.type === 'Loan').reduce((acc, curr) => acc + curr.balance, 0);
-  const activeMembers = members.filter(m => m.status === 'Active').length;
-  const highRiskMembers = members.filter(m => (m.riskScore || 0) > 70).length;
-  const avgRiskScore = members.length > 0 ? Math.round(members.reduce((acc, m) => acc + (m.riskScore || 0), 0) / members.length) : 0;
+  const activeMembersList = members.filter(m => m.status === 'Active');
+  const activeMemberIds = activeMembersList.map(m => m.id);
 
-  const loanAccounts = accounts.filter(a => a.type === 'Loan');
+  const totalAssets = accounts.reduce((acc, curr) => (curr.type !== 'Loan' && curr.status === 'Active' && activeMemberIds.includes(curr.memberId)) ? acc + curr.balance : acc, 0);
+  const totalLoans = accounts.filter(a => a.type === 'Loan' && a.status === 'Active' && activeMemberIds.includes(a.memberId)).reduce((acc, curr) => acc + curr.balance, 0);
+  const activeMembers = activeMembersList.length;
+  const highRiskMembers = activeMembersList.filter(m => (m.riskScore || 0) > 70).length;
+  const avgRiskScore = activeMembers > 0
+    ? Math.round(activeMembersList.reduce((acc, m) => acc + (m.riskScore || 0), 0) / activeMembers)
+    : 0;
+
+  const loanAccounts = accounts.filter(a => a.type === 'Loan' && a.status === 'Active' && activeMemberIds.includes(a.memberId));
   const avgLoanSize = loanAccounts.length > 0 ? totalLoans / loanAccounts.length : 0;
 
   // Real-time Loan Distribution
@@ -57,12 +62,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, accounts, interac
   const loanPerformance = [
     { name: 'Interest Collected', value: interestCollected },
     { name: 'Principal Repaid', value: principalRepaid },
-    { name: 'Default Amount', value: defaultAmount }
+    { name: 'Default Amount (Active)', value: defaultAmount }
   ];
 
-  // Real Transaction Trends (Last 6 Months)
+  // Real Transaction Trends (Last 6 Months) - Only from Non-Pending accounts
   const recentTrends = useMemo(() => {
-    const allTxs = accounts.flatMap(a => a.transactions);
+    const activeAccountIds = accounts.filter(a => a.status !== 'Pending').map(a => a.id);
+    const allTxs = accounts.filter(a => activeAccountIds.includes(a.id)).flatMap(a => a.transactions);
     const today = new Date();
     const last6Months = [];
 
@@ -85,19 +91,21 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, accounts, interac
       id: i.id, type: 'interaction', title: `Interaction with ${members.find(m => m.id === i.memberId)?.fullName}`,
       desc: i.notes.substring(0, 60) + '...', date: i.date, icon: Users, color: 'text-blue-500 bg-blue-50'
     })),
-    ...accounts.flatMap(a => a.transactions.slice(0, 1).map(t => ({
-      id: t.id, type: 'transaction', title: `${t.type === 'credit' ? 'Deposit' : 'Withdrawal'} - ${a.accountNumber}`,
-      desc: `${t.description} (${formatCurrency(t.amount)})`, date: t.date, icon: DollarSign, color: t.type === 'credit' ? 'text-green-500 bg-green-50' : 'text-slate-500 bg-slate-50'
-    }))).slice(0, 3)
+    ...accounts
+      .filter(a => a.status !== 'Pending')
+      .flatMap(a => a.transactions.slice(0, 1).map(t => ({
+        id: t.id, type: 'transaction', title: `${t.type === 'credit' ? 'Deposit' : 'Withdrawal'} - ${a.accountNumber}`,
+        desc: `${t.description} (${formatCurrency(t.amount)})`, date: t.date, icon: DollarSign, color: t.type === 'credit' ? 'text-green-500 bg-green-50' : 'text-slate-500 bg-slate-50'
+      }))).slice(0, 3)
   ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   // Branch Performance Calculation
   const branchPerformance = branches.map(branch => {
     const branchMembers = members.filter(m => m.branchId === branch.id);
     const memberIds = branchMembers.map(m => m.id);
-    const assets = accounts.filter(a => memberIds.includes(a.memberId) && a.type !== 'Loan')
+    const assets = accounts.filter(a => memberIds.includes(a.memberId) && a.type !== 'Loan' && a.status === 'Active' && activeMemberIds.includes(a.memberId))
       .reduce((sum, a) => sum + a.balance, 0);
-    return { ...branch, totalAssets: assets, members: branchMembers.length };
+    return { ...branch, totalAssets: assets, members: branchMembers.filter(m => m.status === 'Active').length };
   }).sort((a, b) => b.totalAssets - a.totalAssets).slice(0, 5);
 
   const COLORS = ['#10B981', '#EF4444', '#94A3B8'];

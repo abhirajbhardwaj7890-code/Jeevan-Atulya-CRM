@@ -57,10 +57,16 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
         // 1. Transactions from Accounts (Primary Source for Member Payments)
         accounts.forEach(acc => {
             const member = members.find(m => m.id === acc.memberId);
+
+            // SKIP condition: Account must be Active AND Member must be Active
+            if (acc.status !== 'Active' || (member && member.status !== 'Active')) {
+                return;
+            }
+
             acc.transactions.forEach(tx => {
                 const txDate = new Date(tx.date);
                 // Check if date is within range
-                if (txDate >= start && txDate <= end && tx.type === 'credit') {
+                if (txDate >= start && txDate <= end) {
 
                     const cash = tx.cashAmount ?? (tx.paymentMethod === 'Cash' ? tx.amount : 0);
                     const online = tx.onlineAmount ?? (tx.paymentMethod === 'Online' ? tx.amount : 0);
@@ -73,8 +79,12 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                         else finalOnline = tx.amount;
                     }
 
-                    totalCash += finalCash;
-                    totalOnline += finalOnline;
+                    // Only count "Collections" (Inflows) for the top-level stats
+                    // In this system, tx.type === 'credit' is ALWAYS an inflow (deposit or repayment)
+                    if (tx.type === 'credit') {
+                        totalCash += finalCash;
+                        totalOnline += finalOnline;
+                    }
 
                     const isOpeningBalance = tx.category === 'Opening Balance' || (tx.description && tx.description.includes('Opening Balance'));
                     const isCDorSM = acc.type === AccountType.COMPULSORY_DEPOSIT || acc.type === AccountType.SHARE_CAPITAL;
@@ -94,7 +104,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                                 mode: 'Cash',
                                 cash: 0,
                                 online: 0,
-                                amount: 0
+                                amount: 0,
+                                type: 'credit'
                             });
                         }
                         const reg = registrationMap.get(key);
@@ -115,17 +126,18 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                             mode: finalCash > 0 && finalOnline > 0 ? 'Both' : (finalCash > 0 ? 'Cash' : 'Online'),
                             cash: finalCash,
                             online: finalOnline,
-                            amount: tx.amount
+                            amount: tx.amount,
+                            type: tx.type
                         });
                     }
                 }
             });
         });
 
-        // 2. Ledger Income Entries (Only Non-Member entries to prevent double counting)
+        // 2. Ledger Income & Expense Entries
         ledger.forEach(entry => {
             const entryDate = new Date(entry.date);
-            if (entryDate >= start && entryDate <= end && entry.type === 'Income') {
+            if (entryDate >= start && entryDate <= end) {
 
                 const autoCategories = [
                     'Member Deposit',
@@ -137,8 +149,16 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                     'Admission Fees & Deposits'
                 ];
 
-                if (autoCategories.includes(entry.category)) {
-                    return;
+                // If it's a member-linked auto-category, we skip it because it's already covered by Account Transactions above.
+                if (entry.memberId) {
+                    const member = members.find(m => m.id === entry.memberId);
+                    // Skip if member is pending/suspended
+                    if (member && member.status !== 'Active') {
+                        return;
+                    }
+                    if (autoCategories.includes(entry.category)) {
+                        return;
+                    }
                 }
 
                 const cash = entry.cashAmount || 0;
@@ -150,8 +170,11 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                     finalCash = entry.amount;
                 }
 
-                totalCash += finalCash;
-                totalOnline += finalOnline;
+                // Only count Income for Collection stats
+                if (entry.type === 'Income') {
+                    totalCash += finalCash;
+                    totalOnline += finalOnline;
+                }
 
                 if (entry.category === 'Admission Fees' && entry.memberId) {
                     const key = `${entry.date}_${entry.memberId}`;
@@ -169,7 +192,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                             mode: 'Cash',
                             cash: 0,
                             online: 0,
-                            amount: 0
+                            amount: 0,
+                            type: 'credit'
                         });
                     }
                     const reg = registrationMap.get(key);
@@ -191,7 +215,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                         mode: finalCash > 0 && finalOnline > 0 ? 'Both' : (finalCash > 0 ? 'Cash' : 'Online'),
                         cash: finalCash,
                         online: finalOnline,
-                        amount: entry.amount
+                        amount: entry.amount,
+                        type: entry.type === 'Income' ? 'credit' : 'debit'
                     });
                 }
             }
@@ -204,7 +229,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
         results.sort((a, b) => {
             const dateDiff = new Date(b.date).getTime() - new Date(a.date).getTime();
             if (dateDiff !== 0) return dateDiff;
-            return a.memberName.localeCompare(b.memberName);
+            // secondary sort by ID to keep related items together
+            return (a.id || '').localeCompare(b.id || '');
         });
 
         return { items: results, totalCash, totalOnline, total: totalCash + totalOnline };

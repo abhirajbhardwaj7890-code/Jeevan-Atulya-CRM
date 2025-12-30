@@ -107,7 +107,7 @@ export const mapAccountFromDB = (a: any): Account => {
         const openingDate = new Date(a.opening_date || a.created_at);
         const maturityDate = new Date(a.maturity_date);
         const diffTime = maturityDate.getTime() - openingDate.getTime();
-        const diffMonths = Math.round(diffTime / (1000 * 60 * 60 * 24 * 30.41));
+        const diffMonths = Math.round(diffTime / (1000 * 60 * 60 * 24 * 30.4167));
         termMonths = diffMonths > 0 ? diffMonths : 12; // Default to 12 if calculation fails
     }
 
@@ -301,6 +301,7 @@ export const createAccount = (
         rdFrequency?: 'Monthly' | 'Daily',
         guarantors?: Guarantor[],
         termMonths?: number,  // Added overrides
+        tenureDays?: number,
         interestRate?: number,
         date?: string, // Added for bulk import/custom opening dates
         paymentMethod?: string,
@@ -397,6 +398,7 @@ export const createAccount = (
         interestRate: rate,
         initialInterestRate: rate,
         termMonths: term > 0 ? term : undefined,
+        tenureDays: extra?.tenureDays,
         guarantors: extra?.guarantors || [],
         openingDate: extra?.date || new Date().toISOString().split('T')[0],
         transactions: [{

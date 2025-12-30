@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
-import { LedgerEntry } from '../types';
+import React, { useState, useMemo } from 'react';
+import { LedgerEntry, Member } from '../types';
 import { Plus, ArrowUpCircle, ArrowDownCircle, Search, Calendar, Save, Trash2, Download } from 'lucide-react';
 
 interface AccountingProps {
     ledger: LedgerEntry[];
+    members: Member[];
     onAddEntry: (entry: LedgerEntry) => void;
 }
 
@@ -21,7 +22,7 @@ const formatDate = (dateStr?: string) => {
     return isNaN(date.getTime()) ? dateStr : date.toLocaleDateString('en-GB');
 };
 
-export const Accounting: React.FC<AccountingProps> = ({ ledger, onAddEntry }) => {
+export const Accounting: React.FC<AccountingProps> = ({ ledger, members, onAddEntry }) => {
     const [showModal, setShowModal] = useState(false);
     const [filterType, setFilterType] = useState<'All' | 'Income' | 'Expense'>('All');
     const [searchTerm, setSearchTerm] = useState('');
@@ -36,18 +37,32 @@ export const Accounting: React.FC<AccountingProps> = ({ ledger, onAddEntry }) =>
         onlineAmount: ''
     });
 
-    const totalIncome = ledger.filter(l => l.type === 'Income').reduce((sum, l) => sum + l.amount, 0);
-    const totalExpense = ledger.filter(l => l.type === 'Expense').reduce((sum, l) => sum + l.amount, 0);
+    const activeLedger = useMemo(() => {
+        return ledger.filter(entry => {
+            if (!entry.memberId) return true; // Internal society transactions always show
+            const member = members.find(m => m.id === entry.memberId);
+            return member ? member.status === 'Active' : true; // Only show if associated member is Active
+        });
+    }, [ledger, members]);
+
+    const sortedLedger = useMemo(() => {
+        return [...activeLedger].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    }, [activeLedger]);
+
+    const totalIncome = activeLedger.filter(l => l.type === 'Income').reduce((sum, l) => sum + l.amount, 0);
+    const totalExpense = activeLedger.filter(l => l.type === 'Expense').reduce((sum, l) => sum + l.amount, 0);
     const netProfit = totalIncome - totalExpense;
 
     const categories = {
-        Income: ['Service Charges', 'Interest Income', 'Commission', 'Penalties', 'Other'],
-        Expense: ['Rent', 'Electricity', 'Staff Salary', 'Maintenance', 'Office Supplies', 'Interest Paid', 'Marketing', 'Other']
+        Income: ['Service Charges', 'Interest Income', 'Commission', 'Penalties', 'Admission Fees', 'Other'],
+        Expense: ['Rent', 'Electricity', 'Staff Salary', 'Maintenance', 'Office Supplies', 'Interest Paid', 'Marketing', 'Loan Disbursement', 'Other']
     };
 
-    const filteredLedger = ledger.filter(l => {
+    const filteredLedger = sortedLedger.filter(l => {
         const matchType = filterType === 'All' || l.type === filterType;
-        const matchSearch = l.description.toLowerCase().includes(searchTerm.toLowerCase()) || l.category.toLowerCase().includes(searchTerm.toLowerCase());
+        const matchSearch = l.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            l.category.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (l.memberId && l.memberId.toLowerCase().includes(searchTerm.toLowerCase()));
         return matchType && matchSearch;
     });
 
@@ -72,8 +87,8 @@ export const Accounting: React.FC<AccountingProps> = ({ ledger, onAddEntry }) =>
     };
 
     const handleExportCSV = () => {
-        const headers = ['Date', 'ID', 'Description', 'Category', 'Type', 'Amount'];
-        const rows = filteredLedger.map(l => [formatDate(l.date), l.id, `"${l.description}"`, l.category, l.type, l.amount]);
+        const headers = ['Date', 'ID', 'Description', 'Category', 'Type', 'Amount', 'Member ID'];
+        const rows = filteredLedger.map(l => [formatDate(l.date), l.id, `"${l.description}"`, l.category, l.type, l.amount, l.memberId || '']);
         const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
         const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
         const url = URL.createObjectURL(blob);
@@ -133,8 +148,8 @@ export const Accounting: React.FC<AccountingProps> = ({ ledger, onAddEntry }) =>
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                             <input
                                 type="text"
-                                placeholder="Search ledger..."
-                                className="pl-9 pr-4 py-2 border border-slate-300 bg-white text-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-64"
+                                placeholder="Search ledger (description, ID, member)..."
+                                className="pl-9 pr-4 py-2 border border-slate-300 bg-white text-slate-900 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 w-80"
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
                             />
@@ -162,23 +177,42 @@ export const Accounting: React.FC<AccountingProps> = ({ ledger, onAddEntry }) =>
                             <tr>
                                 <th className="px-6 py-3 font-semibold">Date</th>
                                 <th className="px-6 py-3 font-semibold">Description</th>
+                                <th className="px-6 py-3 font-semibold">Member</th>
                                 <th className="px-6 py-3 font-semibold">Category</th>
-                                <th className="px-6 py-3 font-semibold">Type</th>
+                                <th className="px-6 py-3 font-semibold">Payment</th>
                                 <th className="px-6 py-3 font-semibold text-right">Amount</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {filteredLedger.map(entry => (
                                 <tr key={entry.id} className="hover:bg-slate-50">
-                                    <td className="px-6 py-4 text-slate-600">{formatDate(entry.date)}</td>
-                                    <td className="px-6 py-4 font-medium text-slate-900">{entry.description}</td>
-                                    <td className="px-6 py-4 text-slate-500"><span className="bg-slate-100 px-2 py-1 rounded text-xs">{entry.category}</span></td>
+                                    <td className="px-6 py-4 text-slate-600 whitespace-nowrap">{formatDate(entry.date)}</td>
                                     <td className="px-6 py-4">
-                                        <span className={`px-2 py-1 rounded text-xs font-medium ${entry.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                            {entry.type}
+                                        <div className="font-medium text-slate-900">{entry.description}</div>
+                                        <div className="text-[10px] text-slate-400 font-mono mt-0.5">{entry.id}</div>
+                                    </td>
+                                    <td className="px-6 py-4 text-slate-600 font-mono">{entry.memberId || '-'}</td>
+                                    <td className="px-6 py-4">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${entry.type === 'Income' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-800'
+                                            }`}>
+                                            {entry.category}
                                         </span>
                                     </td>
-                                    <td className={`px-6 py-4 text-right font-bold ${entry.type === 'Income' ? 'text-green-600' : 'text-slate-900'}`}>
+                                    <td className="px-6 py-4">
+                                        {entry.cashAmount! > 0 && entry.onlineAmount! > 0 ? (
+                                            <div className="text-[10px] space-y-0.5">
+                                                <div className="flex items-center gap-1"><span className="w-8 text-slate-400 uppercase">Cash:</span> <span className="font-bold text-slate-700">₹{entry.cashAmount}</span></div>
+                                                <div className="flex items-center gap-1"><span className="w-8 text-slate-400 uppercase">Onl:</span> <span className="font-bold text-slate-700">₹{entry.onlineAmount}</span></div>
+                                            </div>
+                                        ) : entry.onlineAmount! > 0 ? (
+                                            <div className="text-[10px] flex items-center gap-1 font-bold text-blue-600 uppercase tracking-tighter">
+                                                Online {entry.utrNumber && <span className="text-slate-400 font-mono font-normal ml-1">[{entry.utrNumber}]</span>}
+                                            </div>
+                                        ) : (
+                                            <div className="text-[10px] font-bold text-emerald-600 uppercase tracking-tighter">Cash</div>
+                                        )}
+                                    </td>
+                                    <td className={`px-6 py-4 text-right font-bold ${entry.type === 'Income' ? 'text-green-600' : 'text-red-900'}`}>
                                         {entry.type === 'Income' ? '+' : '-'} {formatCurrency(entry.amount)}
                                     </td>
                                 </tr>
