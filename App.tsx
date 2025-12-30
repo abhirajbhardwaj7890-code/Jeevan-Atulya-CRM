@@ -563,16 +563,18 @@ const App: React.FC = () => {
             await upsertTransaction(newAccount.transactions[0], newAccount.id);
         }
 
-
-        if ((accountData.balance || 0) > 0 && accountData.type !== AccountType.LOAN) {
+        if ((accountData.balance || 0) > 0) {
+            const isLoan = accountData.type === AccountType.LOAN;
             const ledgerEntry: LedgerEntry = {
                 id: `LDG-ACC-${Date.now()}`,
                 memberId: memberId,
                 date: openingDate, // Use opening date for ledger entry
-                description: `New ${accountData.type} Opening - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`,
+                description: isLoan
+                    ? `Loan Disbursement - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`
+                    : `New ${accountData.type} Opening - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`,
                 amount: accountData.balance || 0,
-                type: 'Income',
-                category: 'Member Deposits',
+                type: isLoan ? 'Expense' : 'Income',
+                category: isLoan ? 'Loan Disbursement' : 'Member Deposits',
                 cashAmount: accountData.paymentMethod === 'Both' ? (accountData.cashAmount || 0) : (accountData.paymentMethod === 'Cash' ? (accountData.balance || 0) : 0),
                 onlineAmount: accountData.paymentMethod === 'Both' ? (accountData.onlineAmount || 0) : (accountData.paymentMethod === 'Online' ? (accountData.balance || 0) : 0),
                 utrNumber: accountData.utrNumber
@@ -580,6 +582,7 @@ const App: React.FC = () => {
             setLedger(prev => [ledgerEntry, ...prev]);
             await upsertLedgerEntry(ledgerEntry);
         }
+
 
         // SMS Trigger: New Account
         const member = members.find(m => m.id === memberId);

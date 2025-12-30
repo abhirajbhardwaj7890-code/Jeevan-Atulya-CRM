@@ -497,15 +497,19 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         settings
                     );
 
-                    // Create ledger entry for opening balance if > 0 and not loan
-                    if (acc.balance > 0 && acc.type !== AccountType.LOAN) {
+                    // Create ledger entry for opening balance if > 0
+                    if (acc.balance > 0) {
+                        const isLoan = acc.type === AccountType.LOAN;
                         ledgerToImport.push({
                             id: `LDG-OPEN-${acc.id}`,
+                            memberId: acc.memberId,
                             date: normalizeDate(row.opening_date),
-                            description: `Bulk Open ${acc.type} - ${acc.accountNumber}`,
+                            description: isLoan
+                                ? `Bulk Loan Disbursement - ${acc.accountNumber}`
+                                : `Bulk Open ${acc.type} - ${acc.accountNumber}`,
                             amount: acc.balance,
-                            type: 'Income',
-                            category: 'Member Deposits'
+                            type: isLoan ? 'Expense' : 'Income',
+                            category: isLoan ? 'Loan Disbursement' : 'Member Deposits'
                         });
                     }
 
@@ -538,23 +542,33 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         paymentMethod: row.payment_method || 'Cash'
                     } as Transaction;
 
-                    // Create ledger entry for each transaction
-                    const account = row.account_no || 'Unknown';
-                    ledgerToImport.push({
-                        id: `LDG-TX-${tx.id}`,
-                        date: tx.date,
-                        description: `Bulk Tx: ${tx.description} (${account})`,
-                        amount: tx.amount,
-                        type: tx.type === 'credit' ? 'Income' : 'Expense',
-                        category: tx.type === 'credit' ? 'Member Deposit' : 'Member Withdrawal'
-                    });
-
+                    const accountNo = row.account_no || 'Unknown';
                     const targetAccount = accounts.find(a => a.accountNumber === String(row.account_no));
                     if (!targetAccount) {
                         setImportLogs(prev => [...prev, { name: row.account_no || 'Unknown', error: `Account Number ${row.account_no} not found.` }]);
                         failCount++;
                         return null;
                     }
+
+                    // Create ledger entry for each transaction
+                    const isLoan = targetAccount.type === AccountType.LOAN;
+                    let ledgerType: 'Income' | 'Expense' = tx.type === 'credit' ? 'Income' : 'Expense';
+                    let ledgerCategory = tx.type === 'credit' ? 'Member Deposit' : 'Member Withdrawal';
+
+                    if (isLoan) {
+                        ledgerType = tx.type === 'credit' ? 'Income' : 'Expense';
+                        ledgerCategory = tx.type === 'credit' ? 'Loan Repayment' : 'Loan Disbursement';
+                    }
+
+                    ledgerToImport.push({
+                        id: `LDG-TX-${tx.id}`,
+                        memberId: targetAccount.memberId,
+                        date: tx.date,
+                        description: `Bulk Tx: ${tx.description} (${accountNo})`,
+                        amount: tx.amount,
+                        type: ledgerType,
+                        category: ledgerCategory
+                    });
 
                     return {
                         transaction: tx,
