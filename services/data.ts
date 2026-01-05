@@ -5,7 +5,7 @@ import { parseSafeDate } from './utils';
 export const DEFAULT_SETTINGS: AppSettings = {
     latePaymentFine: 500,
     gracePeriodDays: 30,
-    defaultIntroducerFee: 500, // Default 500 Rs per member introduced
+    defaultIntroducerFee: 200, // Default 200 Rs per member introduced
     interestRates: {
         optionalDeposit: 3.5,
         fixedDeposit: 6.8,
@@ -57,6 +57,7 @@ export const mapMemberFromDB = (m: any): Member => ({
     avatarUrl: m.avatar_url || `https://ui-avatars.com/api/?name=${m.full_name.replace(' ', '+')}&background=random`,
     branchId: m.branch_id,
     introducerId: m.introducer_id,
+    isIntroducerCommissionPaid: m.is_introducer_commission_paid || false,
     documents: m.documents || [],
     lastPrintedTransactionId: m.last_printed_transaction_id,
     nominee: m.nominee ? {
@@ -86,6 +87,7 @@ const mapMemberToDB = (m: Member) => ({
     risk_score: m.riskScore ?? 0,
     branch_id: m.branchId ?? null,
     introducer_id: m.introducerId ?? null,
+    is_introducer_commission_paid: m.isIntroducerCommissionPaid ?? false,
     avatar_url: m.avatarUrl,
     last_printed_transaction_id: m.lastPrintedTransactionId ?? null,
     documents: m.documents || [],

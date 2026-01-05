@@ -182,6 +182,7 @@ export interface Member {
   branchId?: string; // Linked to Branch
   introducerId?: string; // Member ID of the introducer (another member who introduced this member)
   lastPrintedTransactionId?: string; // Track last printed passbook entry
+  isIntroducerCommissionPaid?: boolean; // Track if commission has been paid to the introducer
   nominee?: Nominee;
 }
 

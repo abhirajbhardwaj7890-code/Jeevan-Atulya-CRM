@@ -902,6 +902,7 @@ const App: React.FC = () => {
                         accounts={accounts}
                         settings={settings}
                         onAddBranch={handleAddBranch}
+                        onUpdateMember={handleUpdateMember}
                     />
                 )}
 

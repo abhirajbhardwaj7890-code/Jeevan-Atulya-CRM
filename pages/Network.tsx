@@ -8,9 +8,10 @@ interface NetworkProps {
     accounts: Account[];
     settings: AppSettings;
     onAddBranch: (branch: Branch) => void;
+    onUpdateMember: (member: Member) => Promise<void>;
 }
 
-export const Network: React.FC<NetworkProps> = ({ branches, members, accounts, settings, onAddBranch }) => {
+export const Network: React.FC<NetworkProps> = ({ branches, members, accounts, settings, onAddBranch, onUpdateMember }) => {
     const [activeTab, setActiveTab] = useState<'branches' | 'introducers'>('branches');
 
     // Wizard State
@@ -70,6 +71,14 @@ export const Network: React.FC<NetworkProps> = ({ branches, members, accounts, s
         }
         return result.sort((a, b) => b.count - a.count); // Sort by most referrals
     }, [members, settings.defaultIntroducerFee]);
+
+    const handleToggleCommission = async (member: Member) => {
+        const updatedMember: Member = {
+            ...member,
+            isIntroducerCommissionPaid: !member.isIntroducerCommissionPaid
+        };
+        await onUpdateMember(updatedMember);
+    };
 
     // Derived Statistics
     const totalIntroducers = introducers.length;
@@ -323,9 +332,9 @@ export const Network: React.FC<NetworkProps> = ({ branches, members, accounts, s
                                         <tr>
                                             <th className="p-4 text-xs font-bold text-slate-500 border-b">Member Name</th>
                                             <th className="p-4 text-xs font-bold text-slate-500 border-b">ID</th>
-                                            <th className="p-4 text-xs font-bold text-slate-500 border-b">Phone</th>
                                             <th className="p-4 text-xs font-bold text-slate-500 border-b">Status</th>
                                             <th className="p-4 text-xs font-bold text-slate-500 border-b">Join Date</th>
+                                            <th className="p-4 text-xs font-bold text-slate-500 border-b text-center">Commission</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -333,13 +342,23 @@ export const Network: React.FC<NetworkProps> = ({ branches, members, accounts, s
                                             <tr key={member.id} className="border-b last:border-0 hover:bg-slate-50">
                                                 <td className="p-4 text-sm font-bold text-slate-900">{member.fullName}</td>
                                                 <td className="p-4 text-sm font-mono text-slate-600">{member.id}</td>
-                                                <td className="p-4 text-sm text-slate-600">{member.phone}</td>
                                                 <td className="p-4">
                                                     <span className={`text-xs px-2 py-1 rounded-full font-bold ${member.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
                                                         {member.status}
                                                     </span>
                                                 </td>
                                                 <td className="p-4 text-sm text-slate-600">{new Date(member.joinDate).toLocaleDateString('en-IN')}</td>
+                                                <td className="p-4 text-center">
+                                                    <button
+                                                        onClick={() => handleToggleCommission(member)}
+                                                        className={`px-3 py-1 rounded-full text-xs font-bold border transition-colors ${member.isIntroducerCommissionPaid
+                                                            ? 'bg-green-100 text-green-700 border-green-200 hover:bg-green-200'
+                                                            : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                                                            }`}
+                                                    >
+                                                        {member.isIntroducerCommissionPaid ? 'PAID' : 'UNPAID'}
+                                                    </button>
+                                                </td>
                                             </tr>
                                         ))}
                                     </tbody>
