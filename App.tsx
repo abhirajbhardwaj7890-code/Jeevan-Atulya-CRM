@@ -835,6 +835,7 @@ const App: React.FC = () => {
                 {currentPage === 'members' && (
                     <Members
                         members={members}
+                        accounts={accounts} // Pass accounts prop
                         interactions={interactions}
                         userRole={userRole}
                         onSelectMember={handleSelectMember}

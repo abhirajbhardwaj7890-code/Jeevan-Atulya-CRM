@@ -81,6 +81,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const [proposedFixes, setProposedFixes] = useState<any[]>([]);
     const [recoveryLogs, setRecoveryLogs] = useState<string[]>([]);
 
+    // --- Fix All Auto Ledger State ---
+    const [missingAccountLedgers, setMissingAccountLedgers] = useState<{ account: Account; expectedEntry: LedgerEntry }[]>([]);
+    const [missingTxLedgers, setMissingTxLedgers] = useState<{ account: Account; tx: Transaction; expectedEntry: LedgerEntry }[]>([]);
+    const [isFixingLedgers, setIsFixingLedgers] = useState(false);
+    const [ledgerScanComplete, setLedgerScanComplete] = useState(false);
+
     // --- Configuration Logic ---
     const handleSave = async () => {
         setIsSaving(true);
@@ -790,6 +796,169 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         }
     };
 
+    // --- Fix All Auto Ledger Logic ---
+    const analyzeAutoLedger = () => {
+        setIsFixingLedgers(true);
+        setMissingAccountLedgers([]);
+        setMissingTxLedgers([]);
+
+        const missingAccLedgers: { account: Account; expectedEntry: LedgerEntry }[] = [];
+        const missingTxLedgersArr: { account: Account; tx: Transaction; expectedEntry: LedgerEntry }[] = [];
+
+        // 1. Check for missing account opening ledger entries
+        accounts.forEach(acc => {
+            // SPECIAL HANDLING: Registration Accounts (Share/Compulsory)
+            // These are usually covered by a consolidated 'LDG-REG-DEP' entry created during member registration
+            const member = members.find(m => m.id === acc.memberId);
+            const isRegistrationAccount = (acc.type === AccountType.SHARE_CAPITAL || acc.type === AccountType.COMPULSORY_DEPOSIT);
+
+            if (isRegistrationAccount && member) {
+                const hasRegLedger = ledger.some(l =>
+                    l.memberId === acc.memberId &&
+                    l.id.startsWith('LDG-REG-DEP')
+                );
+                if (hasRegLedger) return; // Covered by Registration Ledger
+            }
+
+            // Skip accounts with zero balance (no initial deposit) unless it's a loan
+            if ((acc.balance === 0 && acc.type !== AccountType.LOAN) && (!acc.initialAmount || acc.initialAmount === 0)) return;
+
+            const openingAmount = acc.initialAmount || acc.balance || 0;
+            if (openingAmount === 0) return;
+
+            // Look for existing LDG-ACC-* entry for this account
+            const hasOpeningLedger = ledger.some(l =>
+                l.description.includes(acc.accountNumber) &&
+                (l.id.startsWith('LDG-ACC-') || l.description.includes('Opening'))
+            );
+
+            if (!hasOpeningLedger) {
+                const isLoan = acc.type === AccountType.LOAN;
+                const expectedEntry: LedgerEntry = {
+                    id: `LDG-ACC-FIX-${acc.id}-${Date.now()}`,
+                    memberId: acc.memberId,
+                    date: parseSafeDate(acc.openingDate || acc.createdAt),
+                    description: isLoan
+                        ? `Loan Disbursement - ${acc.accountNumber} (Auto-Fixed)`
+                        : `New ${acc.type} Opening - ${acc.accountNumber} (Auto-Fixed)`,
+                    amount: openingAmount,
+                    type: isLoan ? 'Expense' : 'Income',
+                    category: isLoan ? 'Loan Disbursement' : 'Member Deposits'
+                };
+                missingAccLedgers.push({ account: acc, expectedEntry });
+            }
+        });
+
+        // 2. Check for missing transaction ledger entries
+        accounts.forEach(acc => {
+            acc.transactions.forEach(tx => {
+                // SPECIAL HANDLING: Registration Transactions (Share/Compulsory Initial Deposit)
+                // These are usually covered by 'LDG-REG-DEP'
+                const member = members.find(m => m.id === acc.memberId);
+                const isRegistrationAccount = (acc.type === AccountType.SHARE_CAPITAL || acc.type === AccountType.COMPULSORY_DEPOSIT);
+                if (isRegistrationAccount && member) {
+                    // If transaction date is close to join date
+                    const txDate = new Date(tx.date).getTime();
+                    const joinDate = new Date(member.joinDate).getTime();
+                    const diffDays = Math.abs(txDate - joinDate) / (1000 * 60 * 60 * 24);
+
+                    if (diffDays <= 2) {
+                        const hasRegLedger = ledger.some(l => l.memberId === acc.memberId && l.id.startsWith('LDG-REG-DEP'));
+                        if (hasRegLedger) return;
+                    }
+                }
+
+                // Skip auto-interest transactions (already handled by another tool)
+                if (tx.id?.startsWith('TX-INT-AUTO-') || tx.description?.includes('Monthly Interest')) return;
+                // Skip opening balance transactions
+                if (tx.description?.toLowerCase().includes('opening balance')) return;
+                // Skip maturity transfers (system-generated)
+                if (tx.id?.includes('MAT-CLOSE') || tx.id?.includes('MAT-CREDIT')) return;
+
+                // Look for existing LDG-AUTO-* entry for this transaction
+                const hasAutoLedger = ledger.some(l =>
+                    l.id.includes(tx.id || 'NEVER_MATCH') ||
+                    (l.description.includes(acc.accountNumber) && l.description.includes('Auto:') && Math.abs(l.amount - tx.amount) < 0.01)
+                );
+
+                // Loose Auto-Match to prevent duplicates: If any ledger entry for this member has same date and amount
+                const hasAnyMatch = ledger.some(l =>
+                    l.memberId === acc.memberId &&
+                    Math.abs(l.amount - tx.amount) < 1 && // 1 Rupee tolerance
+                    l.date === parseSafeDate(tx.date)
+                );
+
+                if (!hasAutoLedger && !hasAnyMatch && tx.amount > 0) {
+                    const isLoan = acc.type === AccountType.LOAN;
+                    let ledgerType: 'Income' | 'Expense' = 'Income';
+                    let ledgerCategory = 'Other';
+
+                    if (isLoan) {
+                        ledgerType = tx.type === 'credit' ? 'Income' : 'Expense';
+                        ledgerCategory = tx.type === 'credit' ? 'Loan Repayment' : 'Loan Disbursement';
+                    } else {
+                        ledgerType = tx.type === 'credit' ? 'Income' : 'Expense';
+                        ledgerCategory = tx.type === 'credit' ? 'Member Deposit' : 'Member Withdrawal';
+                    }
+
+                    if (tx.description?.toLowerCase().includes('fine') || tx.description?.toLowerCase().includes('fee')) {
+                        ledgerType = 'Income';
+                        ledgerCategory = 'Fees & Fines';
+                    }
+
+                    const expectedEntry: LedgerEntry = {
+                        id: `LDG-AUTO-FIX-${tx.id || Date.now()}`,
+                        memberId: acc.memberId,
+                        date: parseSafeDate(tx.date),
+                        description: `Auto: ${tx.description} (${acc.accountNumber}) [Fixed]`,
+                        amount: tx.amount,
+                        type: ledgerType,
+                        category: ledgerCategory
+                    };
+                    missingTxLedgersArr.push({ account: acc, tx, expectedEntry });
+                }
+            });
+        });
+
+        setMissingAccountLedgers(missingAccLedgers);
+        setMissingTxLedgers(missingTxLedgersArr);
+        setLedgerScanComplete(true);
+        setIsFixingLedgers(false);
+
+        if (missingAccLedgers.length === 0 && missingTxLedgersArr.length === 0) {
+            alert("✅ All automatic ledger entries are present. No issues found!");
+        }
+    };
+
+    const fixAllAutoLedger = async () => {
+        const totalMissing = missingAccountLedgers.length + missingTxLedgers.length;
+        if (totalMissing === 0) return;
+
+        if (!confirm(`This will create ${totalMissing} missing ledger entries. Continue?`)) return;
+
+        setIsFixingLedgers(true);
+        try {
+            const allEntries: LedgerEntry[] = [
+                ...missingAccountLedgers.map(m => m.expectedEntry),
+                ...missingTxLedgers.map(m => m.expectedEntry)
+            ];
+
+            await bulkUpsertLedgerEntries(allEntries);
+
+            alert(`✅ Successfully created ${totalMissing} ledger entries!`);
+            setMissingAccountLedgers([]);
+            setMissingTxLedgers([]);
+            setLedgerScanComplete(false);
+
+            if (onImportSuccess) onImportSuccess(); // Refresh data
+        } catch (e: any) {
+            console.error(e);
+            alert("❌ Failed to create ledger entries: " + e.message);
+        } finally {
+            setIsFixingLedgers(false);
+        }
+    };
+
     return (
         <div className="animate-fade-in max-w-5xl pb-10">
             <div className="mb-6 flex justify-between items-center">
@@ -1397,8 +1566,82 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             </div>
                         </div>
                     </div>
+
+                    {/* Fix All Auto Ledger Section */}
+                    <div className="bg-white rounded-xl border border-green-100 shadow-sm p-6 ring-2 ring-green-50">
+                        <div className="flex items-start gap-4">
+                            <div className="p-3 bg-green-100 rounded-full text-green-600">
+                                <Wrench size={24} />
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="font-bold text-slate-900 text-lg">Fix All Auto Ledger</h4>
+                                <p className="text-slate-500 text-xs mb-4">
+                                    Scan and regenerate missing automatic ledger entries for account openings and transactions.
+                                </p>
+
+                                <div className="flex items-center gap-4 flex-wrap">
+                                    <button
+                                        onClick={analyzeAutoLedger}
+                                        disabled={isFixingLedgers}
+                                        className="px-4 py-2 bg-green-50 border border-green-200 text-green-800 font-bold rounded-lg text-xs hover:bg-green-100 disabled:opacity-50"
+                                    >
+                                        {isFixingLedgers ? <Loader className="animate-spin inline mr-2" size={14} /> : <Search size={14} className="inline mr-2" />}
+                                        Scan for Missing Entries
+                                    </button>
+
+                                    {ledgerScanComplete && (
+                                        <div className="flex items-center gap-4 animate-fade-in">
+                                            <div className="text-sm">
+                                                <span className="font-bold text-slate-700">Account Openings: </span>
+                                                <span className={missingAccountLedgers.length > 0 ? 'text-red-600 font-bold' : 'text-green-600'}>{missingAccountLedgers.length} missing</span>
+                                            </div>
+                                            <div className="text-sm">
+                                                <span className="font-bold text-slate-700">Transactions: </span>
+                                                <span className={missingTxLedgers.length > 0 ? 'text-red-600 font-bold' : 'text-green-600'}>{missingTxLedgers.length} missing</span>
+                                            </div>
+                                            {(missingAccountLedgers.length > 0 || missingTxLedgers.length > 0) && (
+                                                <button
+                                                    onClick={fixAllAutoLedger}
+                                                    disabled={isFixingLedgers}
+                                                    className="px-4 py-2 bg-green-600 text-white font-bold rounded-lg text-xs hover:bg-green-700 disabled:opacity-50"
+                                                >
+                                                    {isFixingLedgers ? 'Fixing...' : `Fix All (${missingAccountLedgers.length + missingTxLedgers.length})`}
+                                                </button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {ledgerScanComplete && (missingAccountLedgers.length > 0 || missingTxLedgers.length > 0) && (
+                                    <div className="mt-4 p-3 bg-slate-50 rounded-lg border border-slate-200">
+                                        <p className="text-xs text-slate-600 mb-2 font-medium">Preview of entries to be created:</p>
+                                        <div className="max-h-40 overflow-y-auto text-xs space-y-1">
+                                            {missingAccountLedgers.slice(0, 5).map((m, i) => (
+                                                <div key={`acc-${i}`} className="flex justify-between items-center p-2 bg-white rounded border">
+                                                    <span className="text-slate-700">{m.expectedEntry.description}</span>
+                                                    <span className="font-bold text-green-600">₹{m.expectedEntry.amount}</span>
+                                                </div>
+                                            ))}
+                                            {missingTxLedgers.slice(0, 5).map((m, i) => (
+                                                <div key={`tx-${i}`} className="flex justify-between items-center p-2 bg-white rounded border">
+                                                    <span className="text-slate-700">{m.expectedEntry.description}</span>
+                                                    <span className={`font-bold ${m.expectedEntry.type === 'Income' ? 'text-green-600' : 'text-red-600'}`}>₹{m.expectedEntry.amount}</span>
+                                                </div>
+                                            ))}
+                                            {(missingAccountLedgers.length + missingTxLedgers.length) > 10 && (
+                                                <div className="text-center text-slate-400 italic py-2">
+                                                    ...and {(missingAccountLedgers.length + missingTxLedgers.length) - 10} more entries
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
                 </div>
             )}
+
         </div>
     );
 };

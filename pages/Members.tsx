@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
 import { MemberCard } from '../components/MemberCard';
-import { Search, Filter, UserPlus, Download, Users, X, CheckSquare, Square } from 'lucide-react';
-import { Member, UserRole, Interaction, MemberGroup, Branch } from '../types';
+import { Search, Filter, UserPlus, Download, Users, X, CheckSquare, Square, FileSpreadsheet } from 'lucide-react';
+import { Member, UserRole, Interaction, MemberGroup, Branch, Account, AccountType } from '../types';
+import * as XLSX from 'xlsx';
+import { formatDate } from '../services/utils';
 
 interface MembersProps {
   members: Member[];
-
+  accounts: Account[];
   interactions?: Interaction[];
   userRole: UserRole;
   onSelectMember: (member: Member) => void;
@@ -16,7 +18,18 @@ interface MembersProps {
   branches?: Branch[]; // Added branches prop
 }
 
-export const Members: React.FC<MembersProps> = ({ members, interactions = [], userRole, onSelectMember, onAddNew, groups = [], onUpdateGroup, onAddGroup, branches = [] }) => {
+export const Members: React.FC<MembersProps> = ({
+  members,
+  accounts,
+  interactions = [],
+  userRole,
+  onSelectMember,
+  onAddNew,
+  groups = [],
+  onUpdateGroup,
+  onAddGroup,
+  branches = []
+}) => {
   // Persistence Key
   const STORAGE_KEY = 'jeevan_atulya_members_filters';
 
@@ -89,7 +102,77 @@ export const Members: React.FC<MembersProps> = ({ members, interactions = [], us
 
   const handleBulkAction = async (action: string) => {
     if (action === 'Export') {
-      alert(`Exporting ${selectedIds.size} members...`);
+      const selectedMembers = members.filter(m => selectedIds.has(m.id));
+
+      const exportData = selectedMembers.map(m => {
+        const memberAccounts = accounts.filter(a => a.memberId === m.id);
+
+        // Find specific account balances
+        const smAcc = memberAccounts.find(a => a.type === AccountType.SHARE_CAPITAL);
+        const cdAcc = memberAccounts.find(a => a.type === AccountType.COMPULSORY_DEPOSIT);
+        const odAcc = memberAccounts.find(a => a.type === AccountType.OPTIONAL_DEPOSIT);
+        const activeLoans = memberAccounts.filter(a => a.type === AccountType.LOAN && a.status === 'Active');
+        const activeRDs = memberAccounts.filter(a => a.type === AccountType.RECURRING_DEPOSIT && a.status === 'Active');
+        const activeFDs = memberAccounts.filter(a => a.type === AccountType.FIXED_DEPOSIT && a.status === 'Active');
+
+        const totalLoanBalance = activeLoans.reduce((sum, a) => sum + a.balance, 0);
+        const totalRDBalance = activeRDs.reduce((sum, a) => sum + a.balance, 0);
+        const totalFDBalance = activeFDs.reduce((sum, a) => sum + a.balance, 0);
+
+        return {
+          'Member ID': m.id,
+          'Full Name': m.fullName,
+          'Father Name': m.fatherName || '',
+          'Phone': m.phone,
+          'Status': m.status,
+          'Join Date': formatDate(m.joinDate),
+          'Branch': branches.find(b => b.id === m.branchId)?.name || m.branchId || 'Head Office',
+          'Current Address': m.currentAddress || '',
+          'Email': m.email || '',
+          'Share Money (SM)': smAcc?.balance || 0,
+          'Compulsory Deposit (CD)': cdAcc?.balance || 0,
+          'Optional Deposit (OD)': odAcc?.balance || 0,
+          'Total RD Balance': totalRDBalance,
+          'Total FD Balance': totalFDBalance,
+          'Total Loan Outstanding': totalLoanBalance,
+          'Total Balance': (smAcc?.balance || 0) + (cdAcc?.balance || 0) + (odAcc?.balance || 0) + totalRDBalance + totalFDBalance,
+          'Risk Score': m.riskScore || 0
+        };
+      });
+
+      // Create Worksheet
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Add styling (column widths)
+      const wscols = [
+        { wch: 12 }, // ID
+        { wch: 25 }, // Name
+        { wch: 20 }, // Father
+        { wch: 15 }, // Phone
+        { wch: 10 }, // Status
+        { wch: 12 }, // Date
+        { wch: 15 }, // Branch
+        { wch: 30 }, // Address
+        { wch: 20 }, // Email
+        { wch: 15 }, // SM
+        { wch: 15 }, // CD
+        { wch: 15 }, // OD
+        { wch: 15 }, // RD
+        { wch: 15 }, // FD
+        { wch: 15 }, // Loan
+        { wch: 15 }, // Total
+        { wch: 10 }, // Risk
+      ];
+      ws['!cols'] = wscols;
+
+      // Create Workbook
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Members");
+
+      // Generate Download
+      const fileName = `Members_Export_${new Date().toISOString().split('T')[0]}.xlsx`;
+      XLSX.writeFile(wb, fileName);
+
       setSelectedIds(new Set());
     } else if (action === 'Add to Group') {
       setShowGroupModal(true);
@@ -316,9 +399,9 @@ export const Members: React.FC<MembersProps> = ({ members, interactions = [], us
             <div className="flex gap-2">
               <button
                 onClick={() => handleBulkAction('Export')}
-                className="px-3 py-1.5 hover:bg-slate-700 rounded text-sm flex items-center gap-2 transition-colors"
+                className="px-3 py-1.5 hover:bg-emerald-600 bg-emerald-700 rounded text-sm flex items-center gap-2 transition-colors font-bold"
               >
-                <Download size={16} /> Export CSV
+                <FileSpreadsheet size={16} /> Export Excel
               </button>
               <button
                 onClick={() => handleBulkAction('Add to Group')}
