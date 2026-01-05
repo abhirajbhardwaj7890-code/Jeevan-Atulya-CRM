@@ -808,17 +808,9 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         // 1. Check for missing account opening ledger entries
         accounts.forEach(acc => {
             // SPECIAL HANDLING: Registration Accounts (Share/Compulsory)
-            // These are usually covered by a consolidated 'LDG-REG-DEP' entry created during member registration
-            const member = members.find(m => m.id === acc.memberId);
-            const isRegistrationAccount = (acc.type === AccountType.SHARE_CAPITAL || acc.type === AccountType.COMPULSORY_DEPOSIT);
-
-            if (isRegistrationAccount && member) {
-                const hasRegLedger = ledger.some(l =>
-                    l.memberId === acc.memberId &&
-                    l.id.startsWith('LDG-REG-DEP')
-                );
-                if (hasRegLedger) return; // Covered by Registration Ledger
-            }
+            // THESE ARE ALWAYS HANDLED BY REGISTRATION LOGIC (LDG-REG-DEP).
+            // WE MUST NEVER CREATE "ACCOUNT OPENING" ENTRIES FOR THEM OR WE GET DOUBLE COUNTING.
+            if (acc.type === AccountType.SHARE_CAPITAL || acc.type === AccountType.COMPULSORY_DEPOSIT) return;
 
             // Skip accounts with zero balance (no initial deposit) unless it's a loan
             if ((acc.balance === 0 && acc.type !== AccountType.LOAN) && (!acc.initialAmount || acc.initialAmount === 0)) return;
@@ -853,19 +845,11 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         accounts.forEach(acc => {
             acc.transactions.forEach(tx => {
                 // SPECIAL HANDLING: Registration Transactions (Share/Compulsory Initial Deposit)
-                // These are usually covered by 'LDG-REG-DEP'
-                const member = members.find(m => m.id === acc.memberId);
+                // THESE ARE ALWAYS COVERED BY 'LDG-REG-DEP'. SKIP IF IT LOOKS LIKE INITIAL DEPOSIT.
                 const isRegistrationAccount = (acc.type === AccountType.SHARE_CAPITAL || acc.type === AccountType.COMPULSORY_DEPOSIT);
-                if (isRegistrationAccount && member) {
-                    // If transaction date is close to join date
-                    const txDate = new Date(tx.date).getTime();
-                    const joinDate = new Date(member.joinDate).getTime();
-                    const diffDays = Math.abs(txDate - joinDate) / (1000 * 60 * 60 * 24);
-
-                    if (diffDays <= 2) {
-                        const hasRegLedger = ledger.some(l => l.memberId === acc.memberId && l.id.startsWith('LDG-REG-DEP'));
-                        if (hasRegLedger) return;
-                    }
+                if (isRegistrationAccount) {
+                    // Skip if description suggests opening/initial
+                    if (tx.description?.toLowerCase().includes('opening') || tx.description?.toLowerCase().includes('initial')) return;
                 }
 
                 // Skip auto-interest transactions (already handled by another tool)
