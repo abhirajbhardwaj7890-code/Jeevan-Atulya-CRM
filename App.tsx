@@ -861,6 +861,7 @@ const App: React.FC = () => {
                         appSettings={settings}
                         allMembers={members}
                         accounts={memberAccounts}
+                        allAccounts={accounts}
                         interactions={memberInteractions}
                         ledger={ledger}
                         onBack={() => handleNavigate('members')}
