@@ -809,13 +809,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         const missingRegLedgersArr: { member: Member; expectedEntry: LedgerEntry }[] = [];
 
         // 1. Missing Registration Ledgers Check (Share + Compulsory)
-        members.forEach(member => {
+        members.filter(m => m.status !== 'Pending').forEach(member => {
             const memberAccounts = accounts.filter(a => a.memberId === member.id);
             const shareAccount = memberAccounts.find(a => a.type === AccountType.SHARE_CAPITAL);
             const compAccount = memberAccounts.find(a => a.type === AccountType.COMPULSORY_DEPOSIT);
 
-            // If both exist, we expect a Consolidated Registration Ledger (LDG-REG-DEP) for 600
+            // If both exist, we expect Registration Ledgers
             if (shareAccount && compAccount) {
+                // 1. Check for Initial Deposit (600)
                 const hasRegLedger = ledger.some(l =>
                     l.memberId === member.id &&
                     l.id.startsWith('LDG-REG-DEP')
@@ -835,11 +836,33 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         }
                     });
                 }
+
+                // 2. Check for Registration Fee (Income) - Usually 950 (Standard) or 100 (Basic)
+                const hasRegIncLedger = ledger.some(l =>
+                    l.memberId === member.id &&
+                    l.id.startsWith('LDG-REG-INC')
+                );
+
+                if (!hasRegIncLedger) {
+                    // Default to 950 (Standard Plan 1550 - 600 Deposit)
+                    missingRegLedgersArr.push({
+                        member: member,
+                        expectedEntry: {
+                            id: `LDG-REG-INC-FIX-${member.id}-${Date.now()}`,
+                            memberId: member.id,
+                            date: parseSafeDate(member.joinDate),
+                            description: `Registration Fee - ${member.fullName}`,
+                            amount: 950,
+                            type: 'Income',
+                            category: 'Admission Fees'
+                        }
+                    });
+                }
             }
         });
 
         // 2. Check for missing account opening ledger entries
-        accounts.forEach(acc => {
+        accounts.filter(a => a.status !== AccountStatus.PENDING).forEach(acc => {
             // SPECIAL HANDLING: Registration Accounts (Share/Compulsory)
             // THESE ARE ALWAYS HANDLED BY REGISTRATION LOGIC (LDG-REG-DEP).
             // WE MUST NEVER CREATE "ACCOUNT OPENING" ENTRIES FOR THEM OR WE GET DOUBLE COUNTING.
@@ -875,7 +898,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         });
 
         // 3. Check for missing transaction ledger entries
-        accounts.forEach(acc => {
+        accounts.filter(a => a.status !== AccountStatus.PENDING).forEach(acc => {
             acc.transactions.forEach(tx => {
                 // SPECIAL HANDLING: Registration Transactions (Share/Compulsory Initial Deposit)
                 // THESE ARE ALWAYS COVERED BY 'LDG-REG-DEP'. SKIP IF IT LOOKS LIKE INITIAL DEPOSIT.
@@ -1616,7 +1639,7 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                                 <span className={missingRegLedgers.length > 0 ? 'text-red-600 font-bold' : 'text-green-600'}>{missingRegLedgers.length} missing</span>
                                             </div>
                                             <div className="text-sm">
-                                                <span className="font-bold text-slate-700">Accounts: </span>
+                                                <span className="font-bold text-slate-700">Other Accounts: </span>
                                                 <span className={missingAccountLedgers.length > 0 ? 'text-red-600 font-bold' : 'text-green-600'}>{missingAccountLedgers.length} missing</span>
                                             </div>
                                             <div className="text-sm">
