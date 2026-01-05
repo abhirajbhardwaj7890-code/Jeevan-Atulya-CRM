@@ -910,6 +910,14 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
 
                 // Skip auto-interest transactions (already handled by another tool)
                 if (tx.id?.startsWith('TX-INT-AUTO-') || tx.description?.includes('Monthly Interest')) return;
+
+                // SPECIAL HANDLING: Loan Disbursement Transaction
+                // This is covered by the Account Opening Ledger (LDG-ACC or Disbursement).
+                // We must skip the transaction ledger for the initial disbursement.
+                if (acc.type === AccountType.LOAN) {
+                    if (tx.description?.startsWith('New ') && tx.description?.includes('Loan')) return;
+                }
+
                 // Skip opening balance transactions
                 if (tx.description?.toLowerCase().includes('opening balance')) return;
                 // Skip maturity transfers (system-generated)
