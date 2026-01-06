@@ -27,7 +27,8 @@ import {
     createAccount,
     DEFAULT_SETTINGS,
     upsertGroup,
-    deleteGroup
+    deleteGroup,
+    pingSupabase
 } from './services/data';
 import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Notification, MemberGroup } from './types';
 import { Menu, RefreshCw, AlertCircle, WifiOff, Database } from 'lucide-react';
@@ -374,7 +375,24 @@ const App: React.FC = () => {
             }
         };
         initData();
-    }, []);
+
+        // Listen for browser offline events
+        const handleOffline = () => setDbError("CONNECTION_LOST");
+        window.addEventListener('offline', handleOffline);
+
+        // Background connectivity ping every 30 seconds
+        const interval = setInterval(async () => {
+            const isAlive = await pingSupabase();
+            if (!isAlive && isAuthenticated) {
+                setDbError("CONNECTION_LOST");
+            }
+        }, 30000);
+
+        return () => {
+            window.removeEventListener('offline', handleOffline);
+            clearInterval(interval);
+        };
+    }, [isAuthenticated]);
 
     const [isRefreshing, setIsRefreshing] = useState(false);
 
@@ -441,8 +459,14 @@ const App: React.FC = () => {
     };
 
     const handleUpdateSettings = async (newSettings: AppSettings) => {
-        await saveSettings(newSettings);
-        setSettings(newSettings);
+        try {
+            await saveSettings(newSettings);
+            setSettings(newSettings);
+        } catch (e) {
+            console.error("Settings save failed", e);
+            setDbError("CONNECTION_LOST");
+            alert("Connection Lost. Settings could not be saved.");
+        }
     };
 
     const handleAddInteraction = async (interaction: Partial<Interaction>) => {
@@ -455,8 +479,13 @@ const App: React.FC = () => {
             notes: interaction.notes!,
             sentiment: interaction.sentiment
         };
-        setInteractions([newInteraction, ...interactions]);
-        await upsertInteraction(newInteraction);
+        try {
+            await upsertInteraction(newInteraction);
+            setInteractions([newInteraction, ...interactions]);
+        } catch (e) {
+            console.error("Interaction save failed", e);
+            setDbError("CONNECTION_LOST");
+        }
     };
 
     const handleAddMember = async (newMember: Member, newAccounts: Account[], totalCollected: number, shouldNavigate: boolean = true): Promise<boolean> => {
@@ -512,6 +541,8 @@ const App: React.FC = () => {
                     setLedger(prev => [depositEntry, ...prev]);
                 }
             }
+
+            // Success: Update main state
             setMembers(prev => [newMember, ...prev]);
             setAccounts(prev => [...newAccounts, ...prev]);
 
@@ -526,8 +557,10 @@ const App: React.FC = () => {
             });
 
             return true;
-        } catch (e) {
+        } catch (e: any) {
             console.error("Save failed", e);
+            setDbError("CONNECTION_LOST");
+            alert("Connection Lost. Member could not be created.");
             throw e;
         }
     };
@@ -563,44 +596,51 @@ const App: React.FC = () => {
             newAccount.status = accountData.status;
         }
 
-        setAccounts(prev => [newAccount, ...prev]);
-        await upsertAccount(newAccount);
-        if (newAccount.transactions.length > 0) {
-            await upsertTransaction(newAccount.transactions[0], newAccount.id);
-        }
+        try {
+            await upsertAccount(newAccount);
+            if (newAccount.transactions.length > 0) {
+                await upsertTransaction(newAccount.transactions[0], newAccount.id);
+            }
 
-        if ((accountData.balance || 0) > 0) {
-            const isLoan = accountData.type === AccountType.LOAN;
-            const ledgerEntry: LedgerEntry = {
-                id: `LDG-ACC-${Date.now()}`,
-                memberId: memberId,
-                date: openingDate, // Use opening date for ledger entry
-                description: isLoan
-                    ? `Loan Disbursement - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`
-                    : `New ${accountData.type} Opening - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`,
-                amount: accountData.balance || 0,
-                type: isLoan ? 'Expense' : 'Income',
-                category: isLoan ? 'Loan Disbursement' : 'Member Deposits',
-                cashAmount: accountData.paymentMethod === 'Both' ? (accountData.cashAmount || 0) : (accountData.paymentMethod === 'Cash' ? (accountData.balance || 0) : 0),
-                onlineAmount: accountData.paymentMethod === 'Both' ? (accountData.onlineAmount || 0) : (accountData.paymentMethod === 'Online' ? (accountData.balance || 0) : 0),
-                utrNumber: accountData.utrNumber
-            };
-            setLedger(prev => [ledgerEntry, ...prev]);
-            await upsertLedgerEntry(ledgerEntry);
-        }
+            if ((accountData.balance || 0) > 0) {
+                const isLoan = accountData.type === AccountType.LOAN;
+                const ledgerEntry: LedgerEntry = {
+                    id: `LDG-ACC-${Date.now()}`,
+                    memberId: memberId,
+                    date: openingDate, // Use opening date for ledger entry
+                    description: isLoan
+                        ? `Loan Disbursement - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`
+                        : `New ${accountData.type} Opening - ${newAccount.accountNumber}${accountData.paymentMethod ? ` via ${accountData.paymentMethod}` : ''}`,
+                    amount: accountData.balance || 0,
+                    type: isLoan ? 'Expense' : 'Income',
+                    category: isLoan ? 'Loan Disbursement' : 'Member Deposits',
+                    cashAmount: accountData.paymentMethod === 'Both' ? (accountData.cashAmount || 0) : (accountData.paymentMethod === 'Cash' ? (accountData.balance || 0) : 0),
+                    onlineAmount: accountData.paymentMethod === 'Both' ? (accountData.onlineAmount || 0) : (accountData.paymentMethod === 'Online' ? (accountData.balance || 0) : 0),
+                    utrNumber: accountData.utrNumber
+                };
+                await upsertLedgerEntry(ledgerEntry);
+                setLedger(prev => [ledgerEntry, ...prev]);
+            }
 
+            // Success: Update state
+            setAccounts(prev => [newAccount, ...prev]);
 
-        // SMS Trigger: New Account
-        const member = members.find(m => m.id === memberId);
-        if (member) {
-            triggerSMS('newAccount', member.phone, {
-                memberName: member.fullName,
-                memberId: member.id,
-                accountNo: newAccount.accountNumber,
-                accountType: newAccount.type,
-                amount: newAccount.balance,
-                balance: newAccount.balance
-            });
+            // SMS Trigger: New Account
+            const member = members.find(m => m.id === memberId);
+            if (member) {
+                triggerSMS('newAccount', member.phone, {
+                    memberName: member.fullName,
+                    memberId: member.id,
+                    accountNo: newAccount.accountNumber,
+                    accountType: newAccount.type,
+                    amount: newAccount.balance,
+                    balance: newAccount.balance
+                });
+            }
+        } catch (e: any) {
+            console.error("Account save failed", e);
+            setDbError("CONNECTION_LOST");
+            alert("Connection Lost. Account could not be opened.");
         }
     };
 
@@ -674,12 +714,6 @@ const App: React.FC = () => {
             utrNumber: transactionData.utrNumber
         };
 
-        // Update state
-        setAccounts(prevAccounts => prevAccounts.map(acc =>
-            acc.id === accountId ? updatedAccount : acc
-        ));
-        setLedger(prev => [newLedgerEntry, ...prev]);
-
         // Persist
         try {
             const txToSave = { ...newTransaction, date: parseSafeDate(newTransaction.date) };
@@ -688,6 +722,12 @@ const App: React.FC = () => {
             await upsertAccount(accToSave);
             const ledgerToSave = { ...newLedgerEntry, date: parseSafeDate(newLedgerEntry.date) };
             await upsertLedgerEntry(ledgerToSave);
+
+            // Update state ONLY after successful persistence
+            setAccounts(prevAccounts => prevAccounts.map(acc =>
+                acc.id === accountId ? updatedAccount : acc
+            ));
+            setLedger(prev => [newLedgerEntry, ...prev]);
 
             // SMS Trigger: Deposit/Withdrawal
             const member = members.find(m => m.id === account.memberId);
@@ -702,15 +742,21 @@ const App: React.FC = () => {
                     date: newTransaction.date
                 });
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to persist transaction", e);
+            setDbError("CONNECTION_LOST");
+            alert("Connection Lost. Transaction could not be saved. Please refresh and try again.");
         }
-
     };
 
     const handleAddLedgerEntry = async (entry: LedgerEntry) => {
-        setLedger([entry, ...ledger]);
-        await upsertLedgerEntry(entry);
+        try {
+            await upsertLedgerEntry(entry);
+            setLedger([entry, ...ledger]);
+        } catch (e) {
+            console.error("Ledger save failed", e);
+            setDbError("CONNECTION_LOST");
+        }
     };
 
     const handleUpdateMember = async (updatedMember: Member) => {
@@ -718,32 +764,32 @@ const App: React.FC = () => {
         const originalSelected = selectedMember;
 
         try {
-            // Optimistic update
+            await upsertMember(updatedMember);
+
+            // Success: Update state
             setMembers(prevMembers => prevMembers.map(m => m.id === updatedMember.id ? updatedMember : m));
             setSelectedMember(updatedMember);
 
-            await upsertMember(updatedMember);
-
             if (updatedMember.status === 'Suspended' || updatedMember.status === 'Pending') {
                 const accountsToSuspend: Account[] = [];
-                setAccounts(prevAccounts => prevAccounts.map(a => {
+                const suspensionResults = accounts.map(a => {
                     if (a.memberId === updatedMember.id && a.status === AccountStatus.ACTIVE) {
                         const updated = { ...a, status: AccountStatus.DORMANT as AccountStatus };
                         accountsToSuspend.push(updated);
                         return updated;
                     }
                     return a;
-                }));
+                });
+
                 for (const acc of accountsToSuspend) {
                     await upsertAccount(acc);
                 }
+                setAccounts(suspensionResults);
             }
-        } catch (e) {
+        } catch (e: any) {
             console.error("Failed to update member", e);
-            // Revert on failure
-            setMembers(originalMembers);
-            setSelectedMember(originalSelected);
-            alert("Failed to save member changes. Please check your connection and try again.");
+            setDbError("CONNECTION_LOST");
+            alert("Connection Lost. Member changes could not be saved.");
             throw e;
         }
     };

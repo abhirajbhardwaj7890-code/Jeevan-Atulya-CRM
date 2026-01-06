@@ -439,6 +439,17 @@ const getMemoryCache = () => {
     return MEMORY_CACHE;
 };
 
+export const pingSupabase = async (): Promise<boolean> => {
+    if (!isSupabaseConfigured()) return false;
+    try {
+        const supabase = getSupabaseClient();
+        const { error } = await supabase.from('settings').select('count', { count: 'exact', head: true }).limit(1);
+        return !error;
+    } catch (e) {
+        return false;
+    }
+};
+
 export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], groups: MemberGroup[] }> => {
     // Check if Supabase is configured
     if (!isSupabaseConfigured()) {
