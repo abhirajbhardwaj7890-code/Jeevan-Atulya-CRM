@@ -102,6 +102,54 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         }
     };
 
+    const handleDownloadJSONBackup = () => {
+        const data = {
+            version: "1.0",
+            backupDate: new Date().toISOString(),
+            members,
+            accounts,
+            ledger,
+            settings: form
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `jeevan_atulya_backup_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    const handleRestoreJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = async (event) => {
+            try {
+                const data = JSON.parse(event.target?.result as string);
+                if (!data.members || !data.accounts) throw new Error("Invalid backup format");
+
+                if (!confirm(`Are you sure? This will import ${data.members.length} members and ${data.accounts.length} accounts. Existing records with same IDs will be updated.`)) return;
+
+                setIsImporting(true);
+                await bulkUpsertMembers(data.members);
+                await bulkUpsertAccounts(data.accounts);
+                if (data.ledger) await bulkUpsertLedgerEntries(data.ledger);
+
+                alert("Backup restored successfully!");
+                if (onImportSuccess) onImportSuccess();
+            } catch (err: any) {
+                alert("Failed to restore backup: " + err.message);
+            } finally {
+                setIsImporting(false);
+            }
+        };
+        reader.readAsText(file);
+    };
+
     const updateRate = (category: keyof AppSettings['interestRates'], value: number) => {
         setForm({ ...form, interestRates: { ...form.interestRates, [category]: value } });
     };
@@ -1309,7 +1357,12 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             >
                                 Transactions
                             </button>
-
+                        </div>
+                        <div className="flex gap-2">
+                            <label className="flex items-center gap-2 px-3 py-1 bg-white border border-blue-200 text-blue-700 rounded-lg text-xs font-bold cursor-pointer hover:bg-blue-50 transition-colors">
+                                <Upload size={14} /> Restore from JSON Backup
+                                <input type="file" accept=".json" className="hidden" onChange={handleRestoreJSON} />
+                            </label>
                         </div>
                     </div>
 
@@ -1550,6 +1603,32 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                             <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
                                 <span className="text-sm text-slate-500">Total Ledger Entries</span>
                                 <p className="text-2xl font-bold text-slate-900">{ledger.length}</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Local Backup Section */}
+                    <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-6 ring-2 ring-blue-50">
+                        <div className="flex items-start gap-4">
+                            <div className="p-3 bg-blue-100 rounded-full text-blue-600">
+                                <Download size={24} />
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="font-bold text-slate-900 text-lg">Local Laptop Backup</h4>
+                                <p className="text-slate-500 text-xs mb-4">
+                                    Download a complete snapshot of your database to your laptop. This file includes all members, accounts, and transactions.
+                                </p>
+                                <div className="flex items-center gap-4">
+                                    <button
+                                        onClick={handleDownloadJSONBackup}
+                                        className="px-6 py-2 bg-blue-600 text-white font-bold rounded-lg text-sm hover:bg-blue-700 flex items-center gap-2 shadow-sm"
+                                    >
+                                        <Database size={16} /> Download Full System Backup (.json)
+                                    </button>
+                                    <p className="text-[10px] text-slate-400 max-w-xs italic">
+                                        Tip: Save this file in a secure folder on your laptop (e.g., Documents/Backups).
+                                    </p>
+                                </div>
                             </div>
                         </div>
                     </div>

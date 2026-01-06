@@ -439,6 +439,30 @@ const getMemoryCache = () => {
     return MEMORY_CACHE;
 };
 
+// --- Local Storage Backup ---
+
+export const saveLocalBackup = (data: any) => {
+    try {
+        localStorage.setItem('jeevan_atulya_local_backup', JSON.stringify({
+            timestamp: new Date().toISOString(),
+            ...data
+        }));
+        console.log("[BACKUP] Local snapshot saved to browser storage.");
+    } catch (e) {
+        console.error("[BACKUP] Failed to save local snapshot", e);
+    }
+};
+
+export const getLocalBackup = () => {
+    try {
+        const stored = localStorage.getItem('jeevan_atulya_local_backup');
+        if (!stored) return null;
+        return JSON.parse(stored);
+    } catch (e) {
+        return null;
+    }
+};
+
 export const pingSupabase = async (): Promise<boolean> => {
     if (!isSupabaseConfigured()) return false;
     try {

@@ -28,7 +28,8 @@ import {
     DEFAULT_SETTINGS,
     upsertGroup,
     deleteGroup,
-    pingSupabase
+    pingSupabase,
+    saveLocalBackup
 } from './services/data';
 import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Notification, MemberGroup } from './types';
 import { Menu, RefreshCw, AlertCircle, WifiOff, Database } from 'lucide-react';
@@ -367,6 +368,7 @@ const App: React.FC = () => {
                 setGroups(data.groups);
                 runScheduledTasks(data.accounts, data.members);
                 setDbError(null);
+                saveLocalBackup(data);
             } catch (e: any) {
                 console.error("Initialization failed", e);
                 setDbError(e.message || "UNKNOWN_ERROR");
@@ -409,6 +411,7 @@ const App: React.FC = () => {
             setGroups(data.groups);
             runScheduledTasks(data.accounts, data.members);
             setDbError(null);
+            saveLocalBackup(data);
         } catch (e: any) {
             console.error("Refresh failed", e);
             setDbError(e.message || "FETCH_ERROR");
