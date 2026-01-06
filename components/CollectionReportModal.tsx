@@ -144,21 +144,37 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
             const entryDate = new Date(entry.date);
             if (entryDate >= start && entryDate <= end) {
 
-                const isAdmissionFee = entry.category.toLowerCase().trim() === 'admission fees';
+                const autoCategories = [
+                    'Member Deposit',
+                    'Member Deposits',
+                    'Member Withdrawal',
+                    'Loan Repayment',
+                    'Loan Disbursement',
+                    'Fees & Fines',
+                    'Admission Fees & Deposits'
+                ];
+
+                const normalizedCategory = entry.category.toLowerCase().trim();
+                const isMemberCategory = autoCategories.some(cat =>
+                    normalizedCategory.includes(cat.toLowerCase().trim())
+                );
+                const isAdmissionFee = normalizedCategory === 'admission fees';
 
                 // Establish strict source hierarchy:
-                // 1. If it's a member-linked entry, ONLY include it if it's 'Admission Fees' (part of Registration)
-                // 2. Every other member-linked ledger entry is a duplicate of an account transaction.
-                // 3. Entries without memberId are General Society Income.
-                if (entry.memberId) {
-                    const member = members.find(m => m.id === entry.memberId);
-                    // Skip if member is pending/suspended (same as transaction logic)
-                    if (member && member.status !== 'Active') {
+                // 1. If Category matches any member transaction type, skip it (must come from account transactions)
+                // 2. Exception: 'Admission Fees' component which we merge into 'Registration'
+                // 3. Journal entries often lack memberId but match these categories; we skip them to prevent duplication as 'General Income'.
+                if (isMemberCategory || entry.memberId) {
+                    if (!isAdmissionFee) {
                         return;
                     }
 
-                    if (!isAdmissionFee) {
-                        return; // Skip duplicate member transactions
+                    // Check member status if ID is present
+                    if (entry.memberId) {
+                        const member = members.find(m => m.id === entry.memberId);
+                        if (member && member.status !== 'Active') {
+                            return;
+                        }
                     }
                 }
 
