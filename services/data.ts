@@ -2,6 +2,8 @@ import { Member, Account, AccountType, AccountStatus, Interaction, LoanType, Bra
 import { getSupabaseClient, isSupabaseConfigured } from './supabaseClient';
 import { parseSafeDate } from './utils';
 
+const LOCAL_STORAGE_KEY_PREFIX = 'jeevan_atulya_';
+
 export const DEFAULT_SETTINGS: AppSettings = {
     latePaymentFine: 500,
     gracePeriodDays: 30,
@@ -30,7 +32,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
             newAccount: "Dear {memberName} ({memberId}), your new {accountType} account {accountNo} has been opened with a balance of ₹{balance}.",
             deposit: "Transaction Alert: ₹{amount} credited to your {accountType} account {accountNo} on {date}. New Balance: ₹{balance}.",
             withdrawal: "Transaction Alert: ₹{amount} debited from your {accountType} account {accountNo} on {date}. New Balance: ₹{balance}.",
-            maturity: "Maturity Alert: Your {accountType} account {accountNo} has matured. ₹{amount} has been transferred to your Optional Deposit. New Balance: ₹{balance}."
+            maturity: "Maturity Alert: Your {accountType} account {accountNo} has matured. ₹{amount} has been transferred to your Optional Deposit. New Balance: ₹{balance}.",
+            loanReminder: "Reminder: Dear {memberName}, your loan installment for account {accountNo} is due. Please pay soon to avoid fines.",
+            rdReminder: "Reminder: Dear {memberName}, your RD installment for account {accountNo} is due. Please deposit to your account."
         }
     }
 };
@@ -566,41 +570,63 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
     }
 };
 
-export const upsertMember = async (member: Member) => {
-    console.log("[PERSISTENCE] Saving member to Supabase:", member.id);
-    const supabase = getSupabaseClient();
-    const mappedData = mapMemberToDB(member);
-    const { error } = await supabase.from('members').upsert(mappedData);
+// --- Hybrid Upsert Functions ---
 
-    if (error) {
-        console.error("[PERSISTENCE] Supabase Member Upsert Error:", error.message, error.details);
-        throw new Error(`Failed to save member: ${error.message}`);
+const saveToLocal = (key: string, item: any, idField = 'id') => {
+    const fullKey = LOCAL_STORAGE_KEY_PREFIX + key;
+    const existing = JSON.parse(localStorage.getItem(fullKey) || '[]');
+    const index = existing.findIndex((e: any) => e[idField] === item[idField]);
+    if (index >= 0) existing[index] = item;
+    else existing.push(item);
+    localStorage.setItem(fullKey, JSON.stringify(existing));
+};
+
+export const upsertMember = async (member: Member) => {
+    if (isSupabaseConfigured()) {
+        try {
+            const supabase = getSupabaseClient();
+            const { error } = await supabase.from('members').upsert(mapMemberToDB(member));
+            if (error) throw error;
+        } catch (e) { console.error("Supabase Write Failed:", e); }
     }
-    console.log("[PERSISTENCE] Member saved successfully:", member.id);
+    // Always write to local as backup/hybrid
+    saveToLocal('members', member);
 };
 
 export const bulkUpsertMembers = async (members: Member[]) => {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('members').upsert(members.map(mapMemberToDB));
-    if (error) throw error;
+    if (isSupabaseConfigured()) {
+        const supabase = getSupabaseClient();
+        await supabase.from('members').upsert(members.map(mapMemberToDB));
+    }
+    members.forEach(m => saveToLocal('members', m));
 };
 
 export const upsertAccount = async (account: Account) => {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('accounts').upsert(mapAccountToDB(account));
-    if (error) throw error;
+    if (isSupabaseConfigured()) {
+        try {
+            const supabase = getSupabaseClient();
+            await supabase.from('accounts').upsert(mapAccountToDB(account));
+        } catch (e) { console.error("Supabase Account Write Failed:", e); }
+    }
+    saveToLocal('accounts', account);
 };
 
 export const bulkUpsertAccounts = async (accounts: Account[]) => {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('accounts').upsert(accounts.map(mapAccountToDB));
-    if (error) throw error;
+    if (isSupabaseConfigured()) {
+        const supabase = getSupabaseClient();
+        await supabase.from('accounts').upsert(accounts.map(mapAccountToDB));
+    }
+    accounts.forEach(a => saveToLocal('accounts', a));
 };
 
 export const upsertInteraction = async (interaction: Interaction) => {
-    const supabase = getSupabaseClient();
-    const { error } = await supabase.from('interactions').upsert(mapInteractionToDB(interaction));
-    if (error) throw error;
+    if (isSupabaseConfigured()) {
+        try {
+            const supabase = getSupabaseClient();
+            await supabase.from('interactions').upsert(mapInteractionToDB(interaction));
+        } catch (e) { console.error(e); }
+    }
+    saveToLocal('interactions', interaction);
 };
 
 export const upsertLedgerEntry = async (entry: LedgerEntry) => {

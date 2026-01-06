@@ -48,6 +48,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
         const registrationMap = new Map<string, any>();
         let totalCash = 0;
         let totalOnline = 0;
+        let ledgerCount = 0;
+        let txCount = 0;
 
         const start = new Date(dateRange.start);
         const end = new Date(dateRange.end);
@@ -105,7 +107,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                                 cash: 0,
                                 online: 0,
                                 amount: 0,
-                                type: 'credit'
+                                type: 'credit',
+                                source: 'Registration'
                             });
                         }
                         const reg = registrationMap.get(key);
@@ -114,6 +117,7 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                         reg.amount += tx.amount;
                         reg.mode = reg.cash > 0 && reg.online > 0 ? 'Both' : (reg.cash > 0 ? 'Cash' : 'Online');
                     } else {
+                        txCount++;
                         results.push({
                             id: tx.id,
                             date: tx.date,
@@ -127,7 +131,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                             cash: finalCash,
                             online: finalOnline,
                             amount: tx.amount,
-                            type: tx.type
+                            type: tx.type,
+                            source: 'Member Account'
                         });
                     }
                 }
@@ -139,31 +144,21 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
             const entryDate = new Date(entry.date);
             if (entryDate >= start && entryDate <= end) {
 
-                const autoCategories = [
-                    'Member Deposit',
-                    'Member Deposits',
-                    'Member Withdrawal',
-                    'Loan Repayment',
-                    'Loan Disbursement',
-                    'Fees & Fines',
-                    'Admission Fees & Deposits'
-                ];
+                const isAdmissionFee = entry.category.toLowerCase().trim() === 'admission fees';
 
-                // If it's a member-linked auto-category, we skip it because it's already covered by Account Transactions above.
+                // Establish strict source hierarchy:
+                // 1. If it's a member-linked entry, ONLY include it if it's 'Admission Fees' (part of Registration)
+                // 2. Every other member-linked ledger entry is a duplicate of an account transaction.
+                // 3. Entries without memberId are General Society Income.
                 if (entry.memberId) {
                     const member = members.find(m => m.id === entry.memberId);
-                    // Skip if member is pending/suspended
+                    // Skip if member is pending/suspended (same as transaction logic)
                     if (member && member.status !== 'Active') {
                         return;
                     }
-                    
-                    const normalizedCategory = entry.category.toLowerCase().trim();
-                    const isAutoCategory = autoCategories.some(cat => 
-                        normalizedCategory.includes(cat.toLowerCase().trim())
-                    );
 
-                    if (isAutoCategory || normalizedCategory === 'admission fees & deposits') {
-                        return;
+                    if (!isAdmissionFee) {
+                        return; // Skip duplicate member transactions
                     }
                 }
 
@@ -182,8 +177,6 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                     totalOnline += finalOnline;
                 }
 
-                const isAdmissionFee = entry.category.toLowerCase().trim() === 'admission fees';
-
                 if (isAdmissionFee && entry.memberId) {
                     const key = `${entry.date}_${entry.memberId}`;
                     if (!registrationMap.has(key)) {
@@ -201,7 +194,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                             cash: 0,
                             online: 0,
                             amount: 0,
-                            type: 'credit'
+                            type: 'credit',
+                            source: 'Registration'
                         });
                     }
                     const reg = registrationMap.get(key);
@@ -224,7 +218,8 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                         cash: finalCash,
                         online: finalOnline,
                         amount: entry.amount,
-                        type: entry.type === 'Income' ? 'credit' : 'debit'
+                        type: entry.type === 'Income' ? 'credit' : 'debit',
+                        source: 'Society Ledger'
                     });
                 }
             }
@@ -241,7 +236,7 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
             return (a.id || '').localeCompare(b.id || '');
         });
 
-        return { items: results, totalCash, totalOnline, total: totalCash + totalOnline };
+        return { items: results, totalCash, totalOnline, total: totalCash + totalOnline, txCount, ledgerCount, regCount: registrationMap.size };
     }, [dateRange, accounts, members, ledger]);
 
     const handlePrint = () => {
@@ -444,14 +439,30 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                     </div>
                 </div>
 
+                {/* Source Stats Bar */}
+                <div className="px-6 py-3 bg-slate-100/50 border-b border-slate-200 flex flex-wrap gap-4 items-center text-[10px] font-bold uppercase tracking-wider text-slate-500 overflow-x-auto shrink-0">
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-white rounded-full border border-slate-200 shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                        <span>Member Transactions: {reportData.txCount}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-white rounded-full border border-slate-200 shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-purple-500"></span>
+                        <span>Society Ledger: {reportData.ledgerCount}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-3 py-1 bg-white rounded-full border border-slate-200 shadow-sm">
+                        <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+                        <span>Registrations: {reportData.regCount}</span>
+                    </div>
+                </div>
+
                 {/* Table Content */}
                 <div className="flex-1 overflow-auto p-0">
                     <table className="w-full text-left text-sm border-separate border-spacing-0">
                         <thead className="sticky top-0 bg-white z-10 shadow-sm">
                             <tr>
-                                <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600 w-32">Date</th>
-                                <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600">Member / Source</th>
-                                <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600">Account / Context</th>
+                                <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600">Date / Source</th>
+                                <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600">Member / Entity</th>
+                                <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600">Account / Category</th>
                                 <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600">Payment Details</th>
                                 <th className="px-6 py-4 border-b border-slate-200 font-bold text-slate-600 text-right">Amount</th>
                             </tr>
@@ -460,7 +471,13 @@ export const CollectionReportModal: React.FC<CollectionReportModalProps> = ({ on
                             {reportData.items.map((item, idx) => (
                                 <tr key={`${item.id}-${idx}`} className="hover:bg-slate-50 transition-colors group">
                                     <td className="px-6 py-3 border-b border-slate-50">
-                                        <span className="font-mono text-xs text-slate-500">{formatDate(item.date)}</span>
+                                        <div className="font-mono text-xs text-slate-500">{formatDate(item.date)}</div>
+                                        <div className={`text-[9px] font-bold uppercase tracking-tighter mt-1 px-1.5 py-0.5 rounded-sm inline-block ${item.source === 'Member Account' ? 'bg-blue-50 text-blue-600 border border-blue-100' :
+                                            item.source === 'Society Ledger' ? 'bg-purple-50 text-purple-600 border border-purple-100' :
+                                                'bg-amber-50 text-amber-600 border border-amber-100'
+                                            }`}>
+                                            {item.source}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-3 border-b border-slate-50">
                                         <div className="font-semibold text-slate-800">{item.memberName}</div>

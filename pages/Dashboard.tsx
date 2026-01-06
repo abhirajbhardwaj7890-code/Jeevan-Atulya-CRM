@@ -1,7 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, BarChart, Bar } from 'recharts';
-import { Users, Wallet, TrendingUp, AlertTriangle, CheckCircle, Clock, DollarSign, Briefcase, PiggyBank } from 'lucide-react';
-import { Member, Account, Interaction, Notification, Branch } from '../types';
+import { Users, Wallet, TrendingUp, AlertTriangle, CheckCircle, Clock, DollarSign, Briefcase, PiggyBank, MessageSquare, Loader } from 'lucide-react';
+import { Member, Account, Interaction, Notification, Branch, AccountStatus, AccountType, AppSettings } from '../types';
+import { MessagingService } from '../services/messaging';
 
 interface DashboardProps {
   members: Member[];
@@ -9,6 +10,7 @@ interface DashboardProps {
   interactions: Interaction[];
   systemNotifications?: Notification[];
   branches: Branch[];
+  settings?: AppSettings;
 }
 
 const formatCurrency = (amount: number) => {
@@ -23,7 +25,8 @@ const formatDate = (dateStr?: string) => {
   return isNaN(date.getTime()) ? dateStr : date.toLocaleDateString('en-GB');
 };
 
-export const Dashboard: React.FC<DashboardProps> = ({ members, accounts, interactions, branches }) => {
+export const Dashboard: React.FC<DashboardProps> = ({ members, accounts, interactions, branches, settings }) => {
+  const [isSending, setIsSending] = useState(false);
   const activeMembersList = members.filter(m => m.status === 'Active');
   const activeMemberIds = activeMembersList.map(m => m.id);
 
@@ -66,6 +69,120 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, accounts, interac
   ];
 
   // Real Transaction Trends (Last 6 Months) - Only from Non-Pending accounts
+  const today = new Date();
+  const dayOfMonth = today.getDate();
+  const currentMonthStr = today.toISOString().slice(0, 7); // YYYY-MM
+
+  // Compute payment reminders for Loans and Monthly RDs
+  const paymentReminders = useMemo(() => {
+    const reminders: { accountNumber: string; isLate: boolean; message: string }[] = [];
+    accounts.forEach(acc => {
+      // Only consider active loans and monthly RDs
+      if (acc.status !== AccountStatus.ACTIVE) return;
+      if (acc.type === AccountType.LOAN) {
+        // Check if payment made this month
+        const hasPaid = acc.transactions.some(t => t.type === 'credit' && t.date.startsWith(currentMonthStr));
+        if (!hasPaid) {
+          const isLate = dayOfMonth > 10;
+          const emi = acc.emi ?? 0;
+          let message = '';
+          if (isLate) {
+            const daysOverdue = dayOfMonth - 10;
+            const fine = (emi * 0.15 * daysOverdue) / 365;
+            const fineRounded = Math.round(fine * 100) / 100;
+            message = `Overdue. Fine: ₹${fineRounded}`;
+          } else {
+            message = 'Due by 10th';
+          }
+          reminders.push({ accountNumber: acc.accountNumber, isLate, message });
+        }
+      } else if (acc.type === AccountType.RECURRING_DEPOSIT && acc.rdFrequency === 'Monthly') {
+        const hasPaid = acc.transactions.some(t => t.type === 'credit' && t.date.startsWith(currentMonthStr));
+        if (!hasPaid) {
+          const isLate = dayOfMonth > 10;
+          const emi = acc.emi ?? 0;
+          let message = '';
+          if (isLate) {
+            const fine = emi * 0.0125;
+            const fineRounded = Math.round(fine * 100) / 100;
+            message = `Overdue. Fine: ₹${fineRounded}`;
+          } else {
+            message = 'Due by 10th';
+          }
+          reminders.push({ accountNumber: acc.accountNumber, isLate, message });
+        }
+      }
+    });
+    return reminders;
+  }, [accounts, dayOfMonth, currentMonthStr]);
+
+  // Compute list of members with missing payments for manual messaging
+  const missingMembers = useMemo(() => {
+    const list: { name: string; phone: string; accountNumber: string; type: AccountType }[] = [];
+    accounts.forEach(acc => {
+      if (acc.status !== AccountStatus.ACTIVE) return;
+      const isLoanOrRD = acc.type === AccountType.LOAN || (acc.type === AccountType.RECURRING_DEPOSIT && acc.rdFrequency === 'Monthly');
+      if (!isLoanOrRD) return;
+      const hasPaid = acc.transactions.some(t => t.type === 'credit' && t.date.startsWith(currentMonthStr));
+      if (!hasPaid) {
+        const member = members.find(m => m.id === acc.memberId);
+        if (member) {
+          list.push({ name: member.fullName, phone: member.phone, accountNumber: acc.accountNumber, type: acc.type });
+        }
+      }
+    });
+    return list;
+  }, [accounts, members, currentMonthStr]);
+
+  // Handler to send reminder messages for all missing members via Messaging Service
+  const handleSendReminders = async () => {
+    if (missingMembers.length === 0) {
+      alert('All members are up to date. No reminders to send.');
+      return;
+    }
+
+    if (!settings?.messaging?.enabled) {
+      alert("Messaging is disabled in settings. Please enable it and configure TextBee to send automated reminders.");
+      return;
+    }
+
+    if (!confirm(`This will send ${missingMembers.length} reminder messages. Are you sure?`)) {
+      return;
+    }
+
+    setIsSending(true);
+    let successCount = 0;
+    let failCount = 0;
+
+    const templates = settings?.messaging?.templates;
+
+    try {
+      for (const m of missingMembers) {
+        let tpl = m.type === AccountType.LOAN
+          ? (templates?.loanReminder || "Reminder: Dear {memberName}, your loan installment for account {accountNo} is due.")
+          : (templates?.rdReminder || "Reminder: Dear {memberName}, your RD installment for account {accountNo} is due.");
+
+        const message = tpl
+          .replace(/{memberName}/g, m.name)
+          .replace(/{accountNo}/g, m.accountNumber);
+
+        const success = await MessagingService.sendMessage(settings, m.phone, message);
+        if (success) successCount++; else failCount++;
+      }
+
+      if (failCount === 0) {
+        alert(`✅ Success! All ${successCount} reminders were sent.`);
+      } else {
+        alert(`⚠️ Completed with some issues: ${successCount} sent, ${failCount} failed. Check console for details.`);
+      }
+    } catch (err) {
+      console.error('Messaging error', err);
+      alert('❌ An error occurred while sending reminders.');
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const recentTrends = useMemo(() => {
     const activeAccountIds = accounts.filter(a => a.status !== 'Pending').map(a => a.id);
     const allTxs = accounts.filter(a => activeAccountIds.includes(a.id)).flatMap(a => a.transactions);
@@ -151,6 +268,58 @@ export const Dashboard: React.FC<DashboardProps> = ({ members, accounts, interac
           </div>
         ))}
       </div>
+
+      {/* Unified Payment Reminders & Messaging Widget */}
+      <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-lg font-bold text-slate-900">Payment Reminders & Actions</h3>
+          <button
+            className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-xs font-bold transition-all shadow-sm flex items-center gap-2 disabled:opacity-50"
+            onClick={handleSendReminders}
+            disabled={missingMembers.length === 0 || isSending}
+          >
+            {isSending ? <Loader size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+            {isSending ? 'Sending...' : 'Send All Reminders'}
+          </button>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Due/Late Status</h4>
+            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">
+              {paymentReminders.map((rem, idx) => (
+                <li key={idx} className="flex justify-between items-center text-sm p-2 bg-slate-50 rounded-lg border border-slate-100">
+                  <span className="font-medium text-slate-700">{rem.accountNumber}</span>
+                  <span className={`font-bold ${rem.isLate ? 'text-red-600' : 'text-amber-600'}`}>{rem.message}</span>
+                </li>
+              ))}
+              {paymentReminders.length === 0 && (
+                <li className="text-slate-500 italic text-sm">All payments are up to date.</li>
+              )}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">Contact Details</h4>
+            <ul className="space-y-2 max-h-60 overflow-y-auto pr-2">
+              {missingMembers.map((m, idx) => (
+                <li key={idx} className="flex justify-between items-center text-sm p-2 bg-slate-50 rounded-lg border border-slate-100">
+                  <div>
+                    <p className="font-bold text-slate-800">{m.name}</p>
+                    <p className="text-[10px] text-slate-500 font-mono">{m.accountNumber}</p>
+                  </div>
+                  <span className="text-blue-600 font-medium">{m.phone}</span>
+                </li>
+              ))}
+              {missingMembers.length === 0 && (
+                <li className="text-slate-500 italic text-sm">No pending contacts.</li>
+              )}
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      {/* End of Payment Reminders Widget */}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Chart */}

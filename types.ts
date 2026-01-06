@@ -60,6 +60,8 @@ export interface AppSettings {
       deposit?: string;
       withdrawal?: string;
       maturity?: string;
+      loanReminder?: string;
+      rdReminder?: string;
     };
   };
 }

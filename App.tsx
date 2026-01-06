@@ -120,26 +120,42 @@ const App: React.FC = () => {
 
                     if (!hasPaidThisMonth) {
                         const dayOfMonth = today.getDate();
-                        if (dayOfMonth > 15) {
-                            alerts.push({
-                                id: `ALERT-EMI-LATE-${acc.id}`,
-                                title: 'Loan Repayment Late',
-                                message: `EMI for ${acc.type} (${acc.accountNumber}) is overdue for this month.`,
-                                type: 'warning',
-                                date: todayStr,
-                                read: false
-                            });
-                        } else if (dayOfMonth > 5) { // Assuming typical due date is 5th
-                            alerts.push({
-                                id: `ALERT-EMI-DUE-${acc.id}`,
-                                title: 'Loan Repayment Due',
-                                message: `EMI for ${acc.type} (${acc.accountNumber}) is due this month.`,
-                                type: 'info',
-                                date: todayStr,
-                                read: false
-                            });
-                        }
+                        const isLate = dayOfMonth > 10;
+
+                        alerts.push({
+                            id: `ALERT-EMI-DUE-${acc.id}`,
+                            title: isLate ? 'Loan Repayment LATE' : 'Loan Repayment Due',
+                            message: isLate
+                                ? `EMI for ${acc.loanType || 'Loan'} (${acc.accountNumber}) is overdue (Deadline was 10th). 15% fine is now applicable.`
+                                : `EMI for ${acc.loanType || 'Loan'} (${acc.accountNumber}) is due by the 10th of this month.`,
+                            type: isLate ? 'alert' : 'info',
+                            date: todayStr,
+                            read: false
+                        });
                     }
+                }
+            }
+
+            // 2.1 RD Installment Logic (Monthly)
+            if (acc.type === AccountType.RECURRING_DEPOSIT && acc.status === AccountStatus.ACTIVE && acc.rdFrequency === 'Monthly') {
+                const hasPaidThisMonth = acc.transactions.some(t =>
+                    t.type === 'credit' && t.date.startsWith(currentMonthStr)
+                );
+
+                if (!hasPaidThisMonth) {
+                    const dayOfMonth = today.getDate();
+                    const isLate = dayOfMonth > 10;
+
+                    alerts.push({
+                        id: `ALERT-RD-DUE-${acc.id}`,
+                        title: isLate ? 'RD Installment LATE' : 'RD Installment Due',
+                        message: isLate
+                            ? `Monthly installment for RD ${acc.accountNumber} is late (Deadline was 10th). Please collect with fine.`
+                            : `Monthly installment for RD ${acc.accountNumber} is due by the 10th of this month.`,
+                        type: isLate ? 'warning' : 'info',
+                        date: todayStr,
+                        read: false
+                    });
                 }
             }
 
@@ -856,9 +872,17 @@ const App: React.FC = () => {
                     </button>
 
                     {dbError === 'DB_CONFIG_MISSING' && (
-                        <p className="mt-6 text-[10px] text-slate-500 uppercase tracking-widest font-bold">
-                            Missing: SUPABASE_URL & ANON_KEY
-                        </p>
+                        <div className="mt-6 flex flex-col gap-4">
+                            <button
+                                onClick={() => setDbError(null)}
+                                className="text-sm text-slate-500 hover:text-white transition-colors underline decoration-slate-700 underline-offset-4"
+                            >
+                                Continue in Dev Mode (Offline)
+                            </button>
+                            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold">
+                                Missing: SUPABASE_URL & ANON_KEY
+                            </p>
+                        </div>
                     )}
                 </div>
             </div>
@@ -918,6 +942,7 @@ const App: React.FC = () => {
                         interactions={interactions}
                         systemNotifications={[]} // Notifications now handled globally
                         branches={branches}
+                        settings={settings}
                     />
                 )}
 

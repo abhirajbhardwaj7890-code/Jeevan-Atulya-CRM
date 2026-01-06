@@ -78,8 +78,10 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     const [importLogs, setImportLogs] = useState<{ name: string, error: string }[]>([]);
     const [successCount, setSuccessCount] = useState(0);
     const [isRepairing, setIsRepairing] = useState(false);
-    const [proposedFixes, setProposedFixes] = useState<any[]>([]);
-    const [recoveryLogs, setRecoveryLogs] = useState<string[]>([]);
+
+    // --- Data Quality Audit State ---
+    const [auditResults, setAuditResults] = useState<{ id: string; name: string; missing: string[]; suspicious: string[]; entity: Member }[]>([]);
+    const [isAuditing, setIsAuditing] = useState(false);
 
     // --- Fix All Auto Ledger State ---
     const [missingAccountLedgers, setMissingAccountLedgers] = useState<{ account: Account; expectedEntry: LedgerEntry }[]>([]);
@@ -704,71 +706,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
         return null;
     };
 
-    const analyzeCorruption = () => {
-        setIsRepairing(true);
-        setRecoveryLogs([]);
-        setProposedFixes([]);
-        const fixes: any[] = [];
-        const logs: string[] = [];
-
-        // Check Members
-        members.forEach(m => {
-            const extracted = extractDateFromId(m.id);
-            if (extracted && extracted !== m.joinDate) {
-                // Heuristic: If joinDate is today/recent but ID is old
-                const joinTime = new Date(m.joinDate).getTime();
-                const extractTime = new Date(extracted).getTime();
-                if (Math.abs(joinTime - extractTime) > 86400000 * 30) { // > 30 days diff
-                    fixes.push({
-                        id: m.id, type: 'Member', name: m.fullName, oldDate: m.joinDate, newDate: extracted, entity: m
-                    });
-                    logs.push(`Found corruption in Member ${m.fullName}: ${m.joinDate} -> ${extracted}`);
-                }
-            }
-        });
-
-        // Check Accounts
-        accounts.forEach(a => {
-            const extracted = extractDateFromId(a.id);
-            if (extracted && extracted !== a.openingDate) {
-                const openTime = new Date(a.openingDate).getTime();
-                const extractTime = new Date(extracted).getTime();
-                if (Math.abs(openTime - extractTime) > 86400000 * 30) {
-                    fixes.push({
-                        id: a.id, type: 'Account', name: `${a.type} (${a.accountNumber})`, oldDate: a.openingDate, newDate: extracted, entity: a
-                    });
-                    logs.push(`Found corruption in Account ${a.accountNumber}: ${a.openingDate} -> ${extracted}`);
-                }
-            }
-        });
-
-        setRecoveryLogs(logs);
-        setProposedFixes(fixes);
-        setIsRepairing(false);
-        if (fixes.length === 0) alert("No corruption found based on ID timestamps.");
-    };
-
-    const applyManualFixes = async () => {
-        if (!confirm(`Apply ${proposedFixes.length} date fixes?`)) return;
-        setIsRepairing(true);
-        try {
-            const mems = proposedFixes.filter(f => f.type === 'Member').map(f => ({ ...f.entity, joinDate: f.newDate }));
-            const accs = proposedFixes.filter(f => f.type === 'Account').map(f => ({ ...f.entity, openingDate: f.newDate }));
-
-            if (mems.length > 0) await bulkUpsertMembers(mems);
-            if (accs.length > 0) await bulkUpsertAccounts(accs);
-
-            alert("Fixes applied successfully!");
-            setProposedFixes([]);
-            if (onImportSuccess) onImportSuccess();
-        } catch (e: any) {
-            console.error(e);
-            alert("Failed to apply fixes: " + e.message);
-        } finally {
-            setIsRepairing(false);
-        }
-    };
-
     // --- Auto-Interest Cleanup Logic ---
     const [interestCleanupCount, setInterestCleanupCount] = useState<number | null>(null);
 
@@ -846,6 +783,44 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
     };
 
     // --- Fix All Auto Ledger Logic ---
+    const analyzeDataQuality = () => {
+        setIsAuditing(true);
+        const results: any[] = [];
+
+        // System Reset Date (roughly around Dec 20-30 when the bug was active)
+        const suspiciousDates = [
+            '2025-12-25', '2025-12-26', '2025-12-27', '2025-12-28', '2025-12-29', '2025-12-30', '2025-12-31',
+            '2026-01-01', '2026-01-02', '2026-01-03', '2026-01-04', '2026-01-05'
+        ];
+
+        members.forEach(m => {
+            const missing: string[] = [];
+            const suspicious: string[] = [];
+
+            if (!m.phone || m.phone.trim() === "") missing.push("Phone Number");
+            if (!m.dateOfBirth || m.dateOfBirth.trim() === "") missing.push("Date of Birth");
+            if (!m.currentAddress || m.currentAddress.trim() === "") missing.push("Address");
+            if (!m.fatherName || m.fatherName.trim() === "") missing.push("Father Name");
+
+            // Check if DOB matches one of the "buggy default" dates
+            if (m.dateOfBirth && suspiciousDates.includes(m.dateOfBirth)) {
+                suspicious.push(`DOB looks like a system error (${m.dateOfBirth})`);
+            }
+
+            // Check if Join Date looks like a failure to load historical
+            if (m.joinDate && suspiciousDates.includes(m.joinDate)) {
+                suspicious.push(`Join Date reset to system date (${m.joinDate})`);
+            }
+
+            if (missing.length > 0 || suspicious.length > 0) {
+                results.push({ id: m.id, name: m.fullName, missing, suspicious, entity: m });
+            }
+        });
+
+        setAuditResults(results);
+        setIsAuditing(false);
+        if (results.length === 0) alert("Total Peace of Mind! No missing data found in active members.");
+    };
     const analyzeAutoLedger = () => {
         setIsFixingLedgers(true);
         setMissingAccountLedgers([]);
@@ -1293,6 +1268,8 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                 { label: 'Deposit Confirmation', key: 'deposit' },
                                 { label: 'Withdrawal Confirmation', key: 'withdrawal' },
                                 { label: 'RD/FD Maturity Alert', key: 'maturity' },
+                                { label: 'Loan Payment Reminder', key: 'loanReminder' },
+                                { label: 'RD Payment Reminder', key: 'rdReminder' }
                             ].map((tpl) => (
                                 <div key={tpl.key} className="space-y-2">
                                     <label className="block text-sm font-medium text-slate-700">{tpl.label}</label>
@@ -1607,6 +1584,71 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                         </div>
                     </div>
 
+                    {/* Data Quality Audit Section */}
+                    <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-6 ring-2 ring-blue-50">
+                        <div className="flex items-start gap-4">
+                            <div className="p-3 bg-blue-100 rounded-full text-blue-600">
+                                <Search size={24} />
+                            </div>
+                            <div className="flex-1">
+                                <h4 className="font-bold text-slate-900 text-lg">Data Quality Audit</h4>
+                                <p className="text-slate-500 text-xs mb-4">
+                                    Find members with missing Phone Numbers, DOBs, or Addresses caused by the previous system errors.
+                                </p>
+
+                                <button
+                                    onClick={analyzeDataQuality}
+                                    disabled={isAuditing}
+                                    className="px-4 py-2 bg-blue-50 border border-blue-200 text-blue-700 font-bold rounded-lg text-xs hover:bg-blue-100"
+                                >
+                                    {isAuditing ? <Loader className="animate-spin inline mr-2" size={14} /> : <Database size={14} className="inline mr-2" />}
+                                    Scan Member Registry
+                                </button>
+
+                                {auditResults.length > 0 && (
+                                    <div className="mt-4 space-y-3">
+                                        <p className="font-bold text-sm text-red-600 flex items-center gap-2">
+                                            <AlertCircle size={16} /> Found {auditResults.length} members with missing or suspicious data
+                                        </p>
+                                        <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-lg bg-slate-50">
+                                            <table className="w-full text-left text-xs">
+                                                <thead className="bg-slate-100 sticky top-0">
+                                                    <tr>
+                                                        <th className="p-2 border-b">Member Name</th>
+                                                        <th className="p-2 border-b">Issues</th>
+                                                        <th className="p-2 border-b">Action</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 bg-white">
+                                                    {auditResults.map((res) => (
+                                                        <tr key={res.id}>
+                                                            <td className="p-2 font-bold text-slate-700">{res.name}</td>
+                                                            <td className="p-2">
+                                                                {res.missing.map(m => <span key={m} className="inline-block px-1.5 py-0.5 bg-red-50 text-red-600 rounded-full mr-1 mb-1 border border-red-100 italic">Missing {m}</span>)}
+                                                                {res.suspicious.map(s => <span key={s} className="inline-block px-1.5 py-0.5 bg-amber-50 text-amber-600 rounded-full mr-1 mb-1 border border-amber-100">{s}</span>)}
+                                                            </td>
+                                                            <td className="p-2 text-right">
+                                                                <button
+                                                                    onClick={() => {
+                                                                        // Redirect logic can't easily jump from here, but we can alert ID
+                                                                        alert(`To fix ${res.name}, search for Member ID: ${res.id} in the main dashboard.`);
+                                                                    }}
+                                                                    className="text-blue-600 font-bold hover:underline"
+                                                                >
+                                                                    Fix
+                                                                </button>
+                                                            </td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
                     {/* Local Backup Section */}
                     <div className="bg-white rounded-xl border border-blue-100 shadow-sm p-6 ring-2 ring-blue-50">
                         <div className="flex items-start gap-4">
@@ -1629,31 +1671,6 @@ export const SettingsPage: React.FC<SettingsPageProps> = ({ settings, onUpdateSe
                                         Tip: Save this file in a secure folder on your laptop (e.g., Documents/Backups).
                                     </p>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Data Recovery Section */}
-                    <div className="bg-white rounded-xl border border-red-100 shadow-sm p-6 ring-2 ring-red-50">
-                        <div className="flex items-start gap-4 mb-4">
-                            <div className="p-3 bg-red-100 rounded-full text-red-600">
-                                <AlertTriangle size={24} />
-                            </div>
-                            <div className="flex-1">
-                                <h4 className="font-bold text-slate-900 text-lg">Manual Resurrection</h4>
-                                <p className="text-slate-500 text-xs mb-4">
-                                    Use this tool to manually correct account dates corrupted by the system reset.
-                                </p>
-                                <div className="p-4 bg-red-50 rounded-xl border border-red-100 mb-4">
-                                    <h5 className="font-bold text-red-800 text-sm mb-2 flex items-center gap-2"><Search size={14} /> Step 1: Analyze & Identify</h5>
-                                    <p className="text-xs text-red-800/70 mb-3">Scan all accounts for suspicious date patterns (Opening Date matches Join Date or System Reset Date).</p>
-                                    <button onClick={analyzeCorruption} disabled={isRepairing} className="px-4 py-2 bg-white border border-red-200 text-red-700 font-bold rounded-lg text-xs hover:bg-red-50 disabled:opacity-50">
-                                        {isRepairing ? <Loader className="animate-spin" size={14} /> : 'Scan for Corruption'}
-                                    </button>
-                                </div>
-                                {proposedFixes.length > 0 && (
-                                    <ManualRescueUI fixes={proposedFixes} onApply={applyManualFixes} />
-                                )}
                             </div>
                         </div>
                     </div>
