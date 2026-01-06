@@ -22,7 +22,7 @@ export const formatDate = (dateStr?: string | Date) => {
  * Returns YYYY-MM-DD for storage consistency (ISO-ish)
  */
 export const parseSafeDate = (input: string | undefined | null): string => {
-    if (!input) return new Date().toISOString().split('T')[0];
+    if (!input) return '';
 
     // 1. If already ISO-like (YYYY-MM-DD)
     if (/^\d{4}-\d{2}-\d{2}/.test(input)) return input.split('T')[0];

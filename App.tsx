@@ -30,7 +30,7 @@ import {
     deleteGroup
 } from './services/data';
 import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Notification, MemberGroup } from './types';
-import { Menu, RefreshCw } from 'lucide-react';
+import { Menu, RefreshCw, AlertCircle, WifiOff, Database } from 'lucide-react';
 
 const App: React.FC = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -39,6 +39,7 @@ const App: React.FC = () => {
 
     // Application State
     const [isLoaded, setIsLoaded] = useState(false);
+    const [dbError, setDbError] = useState<string | null>(null);
     const [members, setMembers] = useState<Member[]>([]);
     const [accounts, setAccounts] = useState<Account[]>([]);
     const [interactions, setInteractions] = useState<Interaction[]>([]);
@@ -364,8 +365,10 @@ const App: React.FC = () => {
                 setBranches(data.branches);
                 setGroups(data.groups);
                 runScheduledTasks(data.accounts, data.members);
-            } catch (e) {
+                setDbError(null);
+            } catch (e: any) {
                 console.error("Initialization failed", e);
+                setDbError(e.message || "UNKNOWN_ERROR");
             } finally {
                 setIsLoaded(true);
             }
@@ -387,8 +390,10 @@ const App: React.FC = () => {
             setBranches(data.branches);
             setGroups(data.groups);
             runScheduledTasks(data.accounts, data.members);
-        } catch (e) {
+            setDbError(null);
+        } catch (e: any) {
             console.error("Refresh failed", e);
+            setDbError(e.message || "FETCH_ERROR");
         } finally {
             setIsRefreshing(false);
             if (!isLoaded) setIsLoaded(true);
@@ -775,6 +780,41 @@ const App: React.FC = () => {
     };
 
     if (!isLoaded) return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-slate-500 animate-pulse flex-col gap-2"><RefreshCw className="animate-spin" size={32} /> Loading System Data...</div>;
+
+    if (dbError) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-900 text-white p-6">
+                <div className="max-w-md w-full bg-slate-800 rounded-3xl p-8 shadow-2xl border border-slate-700 text-center animate-in fade-in zoom-in duration-300">
+                    <div className="w-20 h-20 bg-red-500/20 text-red-500 rounded-full flex items-center justify-center mx-auto mb-6">
+                        {dbError === 'DB_CONFIG_MISSING' ? <Database size={40} /> : <WifiOff size={40} />}
+                    </div>
+                    <h1 className="text-2xl font-bold mb-2">
+                        {dbError === 'DB_CONFIG_MISSING' ? 'Database Not Configured' : 'Connection Lost'}
+                    </h1>
+                    <p className="text-slate-400 mb-8 leading-relaxed">
+                        {dbError === 'DB_CONFIG_MISSING'
+                            ? 'The application is not connected to any database. Please configure your Supabase environment variables to continue.'
+                            : 'Unable to reach the database. Please check your internet connection and try again.'}
+                    </p>
+
+                    <button
+                        onClick={handleRefresh}
+                        disabled={isRefreshing}
+                        className="w-full py-4 bg-white text-slate-900 rounded-2xl font-bold hover:bg-slate-100 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                    >
+                        <RefreshCw className={isRefreshing ? 'animate-spin' : ''} size={20} />
+                        {isRefreshing ? 'Checking Connection...' : 'Try Again'}
+                    </button>
+
+                    {dbError === 'DB_CONFIG_MISSING' && (
+                        <p className="mt-6 text-[10px] text-slate-500 uppercase tracking-widest font-bold">
+                            Missing: SUPABASE_URL & ANON_KEY
+                        </p>
+                    )}
+                </div>
+            </div>
+        );
+    }
 
     if (!isAuthenticated) return <LoginPage onLogin={handleLogin} />;
 

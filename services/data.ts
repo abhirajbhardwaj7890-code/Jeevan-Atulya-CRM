@@ -442,16 +442,7 @@ const getMemoryCache = () => {
 export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], groups: MemberGroup[] }> => {
     // Check if Supabase is configured
     if (!isSupabaseConfigured()) {
-        const cache = getMemoryCache();
-        return {
-            ...cache,
-            members: [...cache.members],
-            accounts: [...cache.accounts],
-            interactions: [...cache.interactions],
-            ledger: [...cache.ledger],
-            branches: [...cache.branches],
-            groups: [...cache.groups]
-        };
+        throw new Error("DB_CONFIG_MISSING");
     }
 
     try {
@@ -465,6 +456,12 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
             supabase.from('branches').select('*'),
             supabase.from('settings').select('*')
         ]);
+
+        const firstError = membersRes.error || accountsRes.error || interactionsRes.error || ledgerRes.error || branchesRes.error || settingsRes.error;
+        if (firstError) {
+            console.error("[LOAD] DB Error:", firstError);
+            throw new Error("DB_FETCH_FAILED");
+        }
 
         // Fetch Groups (Simulated via local cache to avoid breaking if table missing)
         const groups: MemberGroup[] = getMemoryCache().groups;
@@ -535,15 +532,6 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
 };
 
 export const upsertMember = async (member: Member) => {
-    if (!isSupabaseConfigured()) {
-        console.warn("[PERSISTENCE] Volatile (Memory) Mode Active - Member Save Hidden on Refresh");
-        console.log("[Volatile] Saving Member", member.fullName);
-        const cache = getMemoryCache();
-        const idx = cache.members.findIndex((m: Member) => m.id === member.id);
-        if (idx >= 0) cache.members[idx] = member; else cache.members.push(member);
-        return;
-    }
-
     console.log("[PERSISTENCE] Saving member to Supabase:", member.id);
     const supabase = getSupabaseClient();
     const mappedData = mapMemberToDB(member);
@@ -557,94 +545,48 @@ export const upsertMember = async (member: Member) => {
 };
 
 export const bulkUpsertMembers = async (members: Member[]) => {
-    if (!isSupabaseConfigured()) {
-        for (const m of members) await upsertMember(m);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('members').upsert(members.map(mapMemberToDB));
     if (error) throw error;
 };
 
 export const upsertAccount = async (account: Account) => {
-    if (!isSupabaseConfigured()) {
-        console.log("[Volatile] Saving Account", account.accountNumber);
-        const cache = getMemoryCache();
-        const idx = cache.accounts.findIndex((a: Account) => a.id === account.id);
-        if (idx >= 0) cache.accounts[idx] = account; else cache.accounts.push(account);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('accounts').upsert(mapAccountToDB(account));
     if (error) throw error;
 };
 
 export const bulkUpsertAccounts = async (accounts: Account[]) => {
-    if (!isSupabaseConfigured()) {
-        for (const a of accounts) await upsertAccount(a);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('accounts').upsert(accounts.map(mapAccountToDB));
     if (error) throw error;
 };
 
 export const upsertInteraction = async (interaction: Interaction) => {
-    if (!isSupabaseConfigured()) {
-        console.log("[Volatile] Saving Interaction");
-        const cache = getMemoryCache();
-        const idx = cache.interactions.findIndex((i: Interaction) => i.id === interaction.id);
-        if (idx >= 0) cache.interactions[idx] = interaction; else cache.interactions.push(interaction);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('interactions').upsert(mapInteractionToDB(interaction));
     if (error) throw error;
 };
 
 export const upsertLedgerEntry = async (entry: LedgerEntry) => {
-    if (!isSupabaseConfigured()) {
-        const cache = getMemoryCache();
-        const idx = cache.ledger.findIndex((l: LedgerEntry) => l.id === entry.id);
-        if (idx >= 0) cache.ledger[idx] = entry; else cache.ledger.push(entry);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('society_ledger').upsert(mapLedgerToDB(entry));
     if (error) throw error;
 };
 
 export const bulkUpsertLedgerEntries = async (entries: LedgerEntry[]) => {
-    if (!isSupabaseConfigured()) {
-        for (const e of entries) await upsertLedgerEntry(e);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('society_ledger').upsert(entries.map(mapLedgerToDB));
     if (error) throw error;
 };
 
 export const upsertTransaction = async (transaction: Transaction, accountId: string) => {
-    if (!isSupabaseConfigured()) {
-        console.log("[Volatile] Saving Transaction to Account", accountId);
-        const cache = getMemoryCache();
-        const account = cache.accounts.find((a: Account) => a.id === accountId);
-        if (account) {
-            const txIdx = account.transactions.findIndex((t: Transaction) => t.id === transaction.id);
-            if (txIdx >= 0) account.transactions[txIdx] = transaction; else account.transactions.unshift(transaction);
-        }
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').upsert(mapTransactionToDB(transaction, accountId));
     if (error) throw error;
 };
 
 export const bulkUpsertTransactions = async (txs: { transaction: Transaction, accountId: string }[]) => {
-    if (!isSupabaseConfigured()) {
-        for (const t of txs) await upsertTransaction(t.transaction, t.accountId);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').upsert(txs.map(t => mapTransactionToDB(t.transaction, t.accountId)));
     if (error) throw error;
@@ -652,16 +594,6 @@ export const bulkUpsertTransactions = async (txs: { transaction: Transaction, ac
 
 export const bulkDeleteTransactions = async (ids: string[]) => {
     if (ids.length === 0) return;
-
-    if (!isSupabaseConfigured()) {
-        console.log("[Volatile] Deleting transactions", ids.length);
-        const cache = getMemoryCache();
-        cache.accounts.forEach((acc: Account) => {
-            acc.transactions = acc.transactions.filter((t: Transaction) => !ids.includes(t.id));
-        });
-        return;
-    }
-
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').delete().in('id', ids);
     if (error) {
@@ -671,12 +603,6 @@ export const bulkDeleteTransactions = async (ids: string[]) => {
 };
 
 export const upsertBranch = async (branch: Branch) => {
-    if (!isSupabaseConfigured()) {
-        const cache = getMemoryCache();
-        const idx = cache.branches.findIndex((b: Branch) => b.id === branch.id);
-        if (idx >= 0) cache.branches[idx] = branch; else cache.branches.push(branch);
-        return;
-    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('branches').upsert(mapBranchToDB(branch));
     if (error) throw error;
@@ -685,11 +611,6 @@ export const upsertBranch = async (branch: Branch) => {
 
 
 export const saveSettings = async (settings: AppSettings) => {
-    if (!isSupabaseConfigured()) {
-        const cache = getMemoryCache();
-        cache.settings = settings;
-        return;
-    }
     const supabase = getSupabaseClient();
 
     const updates = [
