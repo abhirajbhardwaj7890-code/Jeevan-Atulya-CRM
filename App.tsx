@@ -389,7 +389,10 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const initData = async () => {
-            if (!isAuthenticated) return;
+            if (!isAuthenticated) {
+                setIsLoaded(true);
+                return;
+            }
 
             try {
                 const data = await loadData();
