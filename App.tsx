@@ -416,11 +416,16 @@ const App: React.FC = () => {
         initData();
 
         // Listen for browser offline events
-        const handleOffline = () => setDbError("CONNECTION_LOST");
+        const handleOffline = () => {
+            if (sessionStorage.getItem('offline_mode') === 'true') return;
+            setDbError("CONNECTION_LOST");
+        };
         window.addEventListener('offline', handleOffline);
 
         // Background connectivity ping every 30 seconds
         const interval = setInterval(async () => {
+            if (sessionStorage.getItem('offline_mode') === 'true') return; // Skip in Dev Mode
+
             const isAlive = await pingSupabase();
             if (!isAlive && isAuthenticated) {
                 setDbError("CONNECTION_LOST");
@@ -451,7 +456,9 @@ const App: React.FC = () => {
             saveLocalBackup(data);
         } catch (e: any) {
             console.error("Refresh failed", e);
-            setDbError(e.message || "FETCH_ERROR");
+            if (sessionStorage.getItem('offline_mode') !== 'true') {
+                setDbError(e.message || "FETCH_ERROR");
+            }
         } finally {
             setIsRefreshing(false);
             if (!isLoaded) setIsLoaded(true);
@@ -526,7 +533,9 @@ const App: React.FC = () => {
             setInteractions([newInteraction, ...interactions]);
         } catch (e) {
             console.error("Interaction save failed", e);
-            setDbError("CONNECTION_LOST");
+            if (sessionStorage.getItem('offline_mode') !== 'true') {
+                setDbError("CONNECTION_LOST");
+            }
         }
     };
 
@@ -601,8 +610,10 @@ const App: React.FC = () => {
             return true;
         } catch (e: any) {
             console.error("Save failed", e);
-            setDbError("CONNECTION_LOST");
-            alert("Connection Lost. Member could not be created.");
+            if (sessionStorage.getItem('offline_mode') !== 'true') {
+                setDbError("CONNECTION_LOST");
+                alert("Connection Lost. Member could not be created.");
+            }
             throw e;
         }
     };
@@ -681,8 +692,10 @@ const App: React.FC = () => {
             }
         } catch (e: any) {
             console.error("Account save failed", e);
-            setDbError("CONNECTION_LOST");
-            alert("Connection Lost. Account could not be opened.");
+            if (sessionStorage.getItem('offline_mode') !== 'true') {
+                setDbError("CONNECTION_LOST");
+                alert("Connection Lost. Account could not be opened.");
+            }
         }
     };
 
@@ -786,8 +799,10 @@ const App: React.FC = () => {
             }
         } catch (e: any) {
             console.error("Failed to persist transaction", e);
-            setDbError("CONNECTION_LOST");
-            alert("Connection Lost. Transaction could not be saved. Please refresh and try again.");
+            if (sessionStorage.getItem('offline_mode') !== 'true') {
+                setDbError("CONNECTION_LOST");
+                alert("Connection Lost. Transaction could not be saved. Please refresh and try again.");
+            }
         }
     };
 
@@ -797,7 +812,9 @@ const App: React.FC = () => {
             setLedger([entry, ...ledger]);
         } catch (e) {
             console.error("Ledger save failed", e);
-            setDbError("CONNECTION_LOST");
+            if (sessionStorage.getItem('offline_mode') !== 'true') {
+                setDbError("CONNECTION_LOST");
+            }
         }
     };
 
@@ -830,8 +847,10 @@ const App: React.FC = () => {
             }
         } catch (e: any) {
             console.error("Failed to update member", e);
-            setDbError("CONNECTION_LOST");
-            alert("Connection Lost. Member changes could not be saved.");
+            if (sessionStorage.getItem('offline_mode') !== 'true') {
+                setDbError("CONNECTION_LOST");
+                alert("Connection Lost. Member changes could not be saved.");
+            }
             throw e;
         }
     };
@@ -946,6 +965,9 @@ const App: React.FC = () => {
                             <Menu size={24} />
                         </button>
                         <span className="font-bold text-lg ml-2">Co-op Core</span>
+                        {sessionStorage.getItem('offline_mode') === 'true' && (
+                            <span className="ml-2 text-[10px] bg-yellow-400 text-black px-1.5 py-0.5 rounded font-black">DEV</span>
+                        )}
                     </div>
                 )}
 

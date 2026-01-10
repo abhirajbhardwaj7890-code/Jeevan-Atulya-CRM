@@ -31,7 +31,12 @@ export const Sidebar: React.FC<SidebarProps> = ({ activePage, userRole, onNaviga
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">
             J
           </div>
-          Jeevan Atulya
+          <div className="flex flex-col">
+            <span>Jeevan Atulya</span>
+            {sessionStorage.getItem('offline_mode') === 'true' && (
+              <span className="text-[10px] bg-yellow-400 text-black px-1.5 py-0.5 rounded w-fit leading-none font-black">DEV MODE</span>
+            )}
+          </div>
         </h1>
         <p className="text-xs text-slate-500 mt-1">CO-OP Society System</p>
       </div>

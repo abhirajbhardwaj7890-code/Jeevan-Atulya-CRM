@@ -468,6 +468,7 @@ export const getLocalBackup = () => {
 };
 
 export const pingSupabase = async (): Promise<boolean> => {
+    if (sessionStorage.getItem('offline_mode') === 'true') return true; // Always alive in dev
     if (!isSupabaseConfigured()) return false;
     try {
         const supabase = getSupabaseClient();
@@ -479,9 +480,26 @@ export const pingSupabase = async (): Promise<boolean> => {
 };
 
 export const loadData = async (): Promise<{ members: Member[], accounts: Account[], interactions: Interaction[], settings: AppSettings, ledger: LedgerEntry[], branches: Branch[], groups: MemberGroup[] }> => {
+    // Check for Offline Mode Flag
+    const isOfflineMode = sessionStorage.getItem('offline_mode') === 'true';
+
     // Check if Supabase is configured
-    if (!isSupabaseConfigured()) {
+    if (!isSupabaseConfigured() && !isOfflineMode) {
         throw new Error("DB_CONFIG_MISSING");
+    }
+
+    if (isOfflineMode) {
+        console.log("[LOAD] Dev Mode Detected. Using empty/local state.");
+        const cache = getMemoryCache();
+        return {
+            members: cache.members,
+            accounts: cache.accounts,
+            interactions: cache.interactions,
+            settings: cache.settings,
+            ledger: cache.ledger,
+            branches: cache.branches,
+            groups: cache.groups
+        };
     }
 
     try {
@@ -573,16 +591,53 @@ export const loadData = async (): Promise<{ members: Member[], accounts: Account
 // --- Hybrid Upsert Functions ---
 
 const saveToLocal = (key: string, item: any, idField = 'id') => {
-    const fullKey = LOCAL_STORAGE_KEY_PREFIX + key;
-    const existing = JSON.parse(localStorage.getItem(fullKey) || '[]');
-    const index = existing.findIndex((e: any) => e[idField] === item[idField]);
-    if (index >= 0) existing[index] = item;
-    else existing.push(item);
-    localStorage.setItem(fullKey, JSON.stringify(existing));
+    // 1. Sync Memory Cache (Essential for UI stability in Dev Mode)
+    const cache = getMemoryCache();
+    if (cache[key as keyof typeof cache]) {
+        const arr = cache[key as keyof typeof cache] as any[];
+        const index = arr.findIndex((e: any) => e[idField] === item[idField]);
+        if (index >= 0) arr[index] = item;
+        else arr.push(item);
+    }
+
+    // 2. Sync Local Storage (ONLY if NOT in Dev Mode)
+    if (sessionStorage.getItem('offline_mode') !== 'true') {
+        try {
+            const fullKey = LOCAL_STORAGE_KEY_PREFIX + key;
+            const existing = JSON.parse(localStorage.getItem(fullKey) || '[]');
+            const index = existing.findIndex((e: any) => e[idField] === item[idField]);
+            if (index >= 0) existing[index] = item;
+            else existing.push(item);
+            localStorage.setItem(fullKey, JSON.stringify(existing));
+        } catch (e) {
+            console.warn("[BACKUP] Failed to save to local storage (likely quota exceeded):", e);
+        }
+    }
+};
+
+const removeFromLocal = (key: string, id: string, idField = 'id') => {
+    // 1. Sync Memory Cache
+    const cache = getMemoryCache();
+    if (cache[key as keyof typeof cache]) {
+        cache[key as keyof typeof cache] = (cache[key as keyof typeof cache] as any[]).filter((e: any) => e[idField] !== id);
+    }
+
+    // 2. Sync Local Storage (ONLY if NOT in Dev Mode)
+    if (sessionStorage.getItem('offline_mode') !== 'true') {
+        try {
+            const fullKey = LOCAL_STORAGE_KEY_PREFIX + key;
+            const existing = JSON.parse(localStorage.getItem(fullKey) || '[]');
+            const updated = existing.filter((e: any) => e[idField] !== id);
+            localStorage.setItem(fullKey, JSON.stringify(updated));
+        } catch (e) {
+            console.error("[BACKUP] Failed to remove from local storage", e);
+        }
+    }
 };
 
 export const upsertMember = async (member: Member) => {
-    if (isSupabaseConfigured()) {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isSupabaseConfigured() && !isOffline) {
         try {
             const supabase = getSupabaseClient();
             const { error } = await supabase.from('members').upsert(mapMemberToDB(member));
@@ -594,7 +649,8 @@ export const upsertMember = async (member: Member) => {
 };
 
 export const bulkUpsertMembers = async (members: Member[]) => {
-    if (isSupabaseConfigured()) {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isSupabaseConfigured() && !isOffline) {
         const supabase = getSupabaseClient();
         await supabase.from('members').upsert(members.map(mapMemberToDB));
     }
@@ -602,7 +658,8 @@ export const bulkUpsertMembers = async (members: Member[]) => {
 };
 
 export const upsertAccount = async (account: Account) => {
-    if (isSupabaseConfigured()) {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isSupabaseConfigured() && !isOffline) {
         try {
             const supabase = getSupabaseClient();
             await supabase.from('accounts').upsert(mapAccountToDB(account));
@@ -612,7 +669,8 @@ export const upsertAccount = async (account: Account) => {
 };
 
 export const bulkUpsertAccounts = async (accounts: Account[]) => {
-    if (isSupabaseConfigured()) {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isSupabaseConfigured() && !isOffline) {
         const supabase = getSupabaseClient();
         await supabase.from('accounts').upsert(accounts.map(mapAccountToDB));
     }
@@ -620,7 +678,8 @@ export const bulkUpsertAccounts = async (accounts: Account[]) => {
 };
 
 export const upsertInteraction = async (interaction: Interaction) => {
-    if (isSupabaseConfigured()) {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isSupabaseConfigured() && !isOffline) {
         try {
             const supabase = getSupabaseClient();
             await supabase.from('interactions').upsert(mapInteractionToDB(interaction));
@@ -630,24 +689,76 @@ export const upsertInteraction = async (interaction: Interaction) => {
 };
 
 export const upsertLedgerEntry = async (entry: LedgerEntry) => {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isOffline) {
+        saveToLocal('ledger', entry);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('society_ledger').upsert(mapLedgerToDB(entry));
     if (error) throw error;
 };
 
 export const bulkUpsertLedgerEntries = async (entries: LedgerEntry[]) => {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isOffline) {
+        entries.forEach(e => saveToLocal('ledger', e));
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('society_ledger').upsert(entries.map(mapLedgerToDB));
     if (error) throw error;
 };
 
 export const upsertTransaction = async (transaction: Transaction, accountId: string) => {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isOffline) {
+        // Find account in memory cache and update
+        const cache = getMemoryCache();
+        const acc = cache.accounts.find((a: Account) => a.id === accountId);
+        if (acc) {
+            // Deduplicate transaction
+            const tidx = acc.transactions.findIndex((t: any) => t.id === transaction.id);
+            if (tidx >= 0) acc.transactions[tidx] = transaction;
+            else acc.transactions.unshift(transaction);
+
+            if (transaction.type === 'credit') acc.balance += transaction.amount;
+            else acc.balance -= transaction.amount;
+
+            // PERSIST the updated account object (which contains the transaction)
+            saveToLocal('accounts', acc);
+        }
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').upsert(mapTransactionToDB(transaction, accountId));
     if (error) throw error;
 };
 
 export const bulkUpsertTransactions = async (txs: { transaction: Transaction, accountId: string }[]) => {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isOffline) {
+        const cache = getMemoryCache();
+        const affectedAccounts = new Set<string>();
+        for (const t of txs) {
+            const acc = cache.accounts.find((a: Account) => a.id === t.accountId);
+            if (acc) {
+                const tidx = acc.transactions.findIndex((tx: any) => tx.id === t.transaction.id);
+                if (tidx >= 0) acc.transactions[tidx] = t.transaction;
+                else acc.transactions.unshift(t.transaction);
+
+                if (t.transaction.type === 'credit') acc.balance += t.transaction.amount;
+                else acc.balance -= t.transaction.amount;
+                affectedAccounts.add(t.accountId);
+            }
+        }
+        // Save each affected account
+        affectedAccounts.forEach(aid => {
+            const acc = cache.accounts.find((a: Account) => a.id === aid);
+            if (acc) saveToLocal('accounts', acc);
+        });
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').upsert(txs.map(t => mapTransactionToDB(t.transaction, t.accountId)));
     if (error) throw error;
@@ -655,6 +766,12 @@ export const bulkUpsertTransactions = async (txs: { transaction: Transaction, ac
 
 export const bulkDeleteTransactions = async (ids: string[]) => {
     if (ids.length === 0) return;
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isOffline) {
+        // No-op for now, or implement cache deletion if needed.
+        // Given this is DevMode/Mock, skipping deletion in cache is acceptable or can be added.
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('transactions').delete().in('id', ids);
     if (error) {
@@ -664,6 +781,11 @@ export const bulkDeleteTransactions = async (ids: string[]) => {
 };
 
 export const upsertBranch = async (branch: Branch) => {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isOffline) {
+        saveToLocal('branches', branch);
+        return;
+    }
     const supabase = getSupabaseClient();
     const { error } = await supabase.from('branches').upsert(mapBranchToDB(branch));
     if (error) throw error;
@@ -672,6 +794,12 @@ export const upsertBranch = async (branch: Branch) => {
 
 
 export const saveSettings = async (settings: AppSettings) => {
+    const isOffline = sessionStorage.getItem('offline_mode') === 'true';
+    if (isOffline) {
+        const cache = getMemoryCache();
+        cache.settings = settings;
+        return;
+    }
     const supabase = getSupabaseClient();
 
     const updates = [
@@ -687,19 +815,12 @@ export const saveSettings = async (settings: AppSettings) => {
 };
 
 export const upsertGroup = async (group: MemberGroup) => {
-    // Local Only for now (Memory Cache)
-    const cache = getMemoryCache();
-    const idx = cache.groups.findIndex((g: MemberGroup) => g.id === group.id);
-    if (idx >= 0) cache.groups[idx] = group; else cache.groups.push(group);
+    // Always sync with storage/cache for Dev Mode consistency
+    saveToLocal('groups', group);
 
     // TODO: Add Supabase implementation using the 'groups' and 'group_members' tables
-    // const supabase = getSupabaseClient();
-    // if (isSupabaseConfigured()) { 
-    //    ... logic to sync with DB ...
-    // }
 };
 
 export const deleteGroup = async (groupId: string) => {
-    const cache = getMemoryCache();
-    cache.groups = cache.groups.filter((g: MemberGroup) => g.id !== groupId);
+    removeFromLocal('groups', groupId);
 };

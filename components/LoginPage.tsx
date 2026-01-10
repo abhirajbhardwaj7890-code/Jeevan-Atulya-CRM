@@ -25,6 +25,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
     setError('');
     setIsLoading(true);
 
+    // DEV BYPASS
+    if (password === 'Dev47') {
+      sessionStorage.setItem('offline_mode', 'true');
+      alert("⚠️ Entering Dev Mode. No database changes will be saved permanently.");
+      onLogin('Admin'); // Always admin in dev mode
+      setIsLoading(false);
+      return;
+    }
+
     // Determine email based on selected role
     const email = selectedRole === 'Admin' ? 'admin@jeevanatulya.com' : 'staff@jeevanatulya.com';
 
@@ -45,6 +54,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
       if (data.user) {
         // Derive role from email
         const role = EMAIL_ROLE_MAP[data.user.email || ''] || 'Staff';
+        sessionStorage.removeItem('offline_mode'); // Clear offline flag on real login
         onLogin(role);
       }
     } catch (err: any) {
