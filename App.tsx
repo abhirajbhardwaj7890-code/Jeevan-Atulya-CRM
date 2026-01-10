@@ -539,7 +539,18 @@ const App: React.FC = () => {
         }
     };
 
-    const handleAddMember = async (newMember: Member, newAccounts: Account[], totalCollected: number, shouldNavigate: boolean = true): Promise<boolean> => {
+    const handleAddMember = async (
+        newMember: Member,
+        newAccounts: Account[],
+        totalCollected: number,
+        shouldNavigate: boolean = true,
+        paymentDetails?: {
+            paymentMethod: 'Cash' | 'Online' | 'Both',
+            utrNumber?: string,
+            cashAmount?: number,
+            onlineAmount?: number
+        }
+    ): Promise<boolean> => {
         try {
             // Find Registration Receipt Document upload date or use joinDate
             const regDate = newMember.joinDate;
@@ -558,9 +569,19 @@ const App: React.FC = () => {
                 // Entry (100) + Building (450) + Welfare (400) = 950 (Admission Fees)
                 // For 700 Plan: Entry (100) = 100 (Admission Fees)
 
-                // We assume 600 is ALWAYS the deposit portion for ANY plan that has it
                 const depositInflow = 600;
                 const admissionIncome = totalCollected - depositInflow;
+
+                // Calculate split if paymentDetails provided
+                const pMethod = paymentDetails?.paymentMethod || 'Cash';
+                const utr = paymentDetails?.utrNumber;
+
+                // For splitting "Both" proportionally:
+                const totalCash = paymentDetails?.cashAmount || (pMethod === 'Cash' ? totalCollected : 0);
+                const totalOnline = paymentDetails?.onlineAmount || (pMethod === 'Online' ? totalCollected : 0);
+
+                const cashRatio = totalCollected > 0 ? totalCash / totalCollected : 1;
+                const onlineRatio = totalCollected > 0 ? totalOnline / totalCollected : 0;
 
                 // 1. Admission Fees (Income)
                 if (admissionIncome > 0) {
@@ -568,10 +589,13 @@ const App: React.FC = () => {
                         id: `LDG-REG-INC-${Date.now()}`,
                         memberId: newMember.id,
                         date: parseSafeDate(regDate),
-                        description: `Registration Fee - ${newMember.fullName}`,
+                        description: `Registration Fee - ${newMember.fullName}${pMethod !== 'Cash' ? ` via ${pMethod}` : ''}`,
                         amount: admissionIncome,
                         type: 'Income',
-                        category: 'Admission Fees'
+                        category: 'Admission Fees',
+                        cashAmount: Math.round(admissionIncome * cashRatio),
+                        onlineAmount: Math.round(admissionIncome * onlineRatio),
+                        utrNumber: utr
                     };
                     await upsertLedgerEntry(incomeEntry);
                     setLedger(prev => [incomeEntry, ...prev]);
@@ -583,10 +607,13 @@ const App: React.FC = () => {
                         id: `LDG-REG-DEP-${Date.now() + 1}`,
                         memberId: newMember.id,
                         date: parseSafeDate(regDate),
-                        description: `Initial Deposit (SM/CD) - ${newMember.fullName}`,
+                        description: `Initial Deposit (SM/CD) - ${newMember.fullName}${pMethod !== 'Cash' ? ` via ${pMethod}` : ''}`,
                         amount: depositInflow,
                         type: 'Income', // Recorded as Inflow
-                        category: 'Admission Fees & Deposits'
+                        category: 'Admission Fees & Deposits',
+                        cashAmount: Math.round(depositInflow * cashRatio),
+                        onlineAmount: Math.round(depositInflow * onlineRatio),
+                        utrNumber: utr
                     };
                     await upsertLedgerEntry(depositEntry);
                     setLedger(prev => [depositEntry, ...prev]);

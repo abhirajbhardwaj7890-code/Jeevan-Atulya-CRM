@@ -7,7 +7,7 @@ import { formatDate } from '../services/utils';
 interface NewMemberProps {
     onCancel: () => void;
     // onComplete returns a promise to await DB confirmation
-    onComplete: (member: Member, initialAccounts: any[], totalCollected: number, shouldNavigate?: boolean) => Promise<boolean>;
+    onComplete: (member: Member, initialAccounts: any[], totalCollected: number, shouldNavigate?: boolean, paymentDetails?: { paymentMethod: 'Cash' | 'Online' | 'Both', utrNumber?: string, cashAmount?: number, onlineAmount?: number }) => Promise<boolean>;
     settings?: AppSettings;
     nextId: string;
     members?: Member[]; // Create dependency on Members for helper lookup
@@ -203,13 +203,22 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
 
             finalTotal = totalAmount;
 
+            // Calculate split ratios
+            const totalCash = formData.paymentMethod === 'Both' ? (parseFloat(paymentSplit.cash) || 0) : (formData.paymentMethod === 'Cash' ? finalTotal : 0);
+            const totalOnline = formData.paymentMethod === 'Both' ? (parseFloat(paymentSplit.online) || 0) : (formData.paymentMethod === 'Online' ? finalTotal : 0);
+            const cashRatio = finalTotal > 0 ? totalCash / finalTotal : 1;
+            const onlineRatio = finalTotal > 0 ? totalOnline / finalTotal : 0;
+
             // Construct Initial Accounts
             const initialAccountStatus = AccountStatus.ACTIVE;
 
-            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, parseFloat(formData.shareMoney as any) || 0, undefined, {
+            const shareMoney = parseFloat(formData.shareMoney as any) || 0;
+            const shareCap = createAccount(newMember.id, AccountType.SHARE_CAPITAL, shareMoney, undefined, {
                 date: formData.joinDate,
                 paymentMethod: formData.paymentMethod,
-                utrNumber: formData.utrNumber
+                utrNumber: formData.utrNumber,
+                cashAmount: Math.round(shareMoney * cashRatio),
+                onlineAmount: Math.round(shareMoney * onlineRatio)
             }, 1, settings);
             shareCap.id = `ACC-${newMember.id}-SHR-INIT`;
             if (shareCap.transactions.length > 0) {
@@ -217,10 +226,13 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             }
             shareCap.status = initialAccountStatus;
 
-            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, parseFloat(formData.compulsoryDeposit as any) || 0, undefined, {
+            const compDeposit = parseFloat(formData.compulsoryDeposit as any) || 0;
+            const compDep = createAccount(newMember.id, AccountType.COMPULSORY_DEPOSIT, compDeposit, undefined, {
                 date: formData.joinDate,
                 paymentMethod: formData.paymentMethod,
-                utrNumber: formData.utrNumber
+                utrNumber: formData.utrNumber,
+                cashAmount: Math.round(compDeposit * cashRatio),
+                onlineAmount: Math.round(compDeposit * onlineRatio)
             }, 2, settings);
             compDep.id = `ACC-${newMember.id}-CD-INIT`;
             if (compDep.transactions.length > 0) {
@@ -238,8 +250,13 @@ export const NewMember: React.FC<NewMemberProps> = ({ onCancel, onComplete, sett
             const admissionIncome = (Number(formData.buildingFund) || 0) + (Number(formData.welfareFund) || 0) + (Number(formData.entryCharge) || 0);
 
             // Attempt to save to DB immediately. Pass 'false' to NOT navigate away yet.
-            // Note: handleAddMember in App.tsx needs to be updated to accept admissionIncome or we use finalTotal
-            await onComplete(newMember, accounts, finalTotal, false);
+            const paymentDetails = {
+                paymentMethod: formData.paymentMethod,
+                utrNumber: formData.utrNumber,
+                cashAmount: formData.paymentMethod === 'Both' ? (parseFloat(paymentSplit.cash) || 0) : (formData.paymentMethod === 'Cash' ? totalAmount : 0),
+                onlineAmount: formData.paymentMethod === 'Both' ? (parseFloat(paymentSplit.online) || 0) : (formData.paymentMethod === 'Online' ? totalAmount : 0)
+            };
+            await onComplete(newMember, accounts, finalTotal, false, paymentDetails);
 
             // Only if successful:
             if (isPending) {
