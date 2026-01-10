@@ -9,63 +9,70 @@ const getEnvVar = (key: string): string | undefined => {
       // @ts-ignore
       return import.meta.env[key];
     }
-  } catch (e) {}
-  
+  } catch (e) { }
+
   // 2. Check process.env (Node/Webpack/CRA standard)
   try {
     if (typeof process !== 'undefined' && process.env && process.env[key]) {
       return process.env[key];
     }
-  } catch (e) {}
+  } catch (e) { }
 
   return undefined;
 };
 
 // Helper to check multiple common naming patterns
 const findEnvValue = (baseKey: string): string | undefined => {
-    // Try VITE_ prefix (Standard Vite)
-    let val = getEnvVar(`VITE_${baseKey}`);
-    if (val) return val;
+  // Try VITE_ prefix (Standard Vite)
+  let val = getEnvVar(`VITE_${baseKey}`);
+  if (val) return val;
 
-    // Try REACT_APP_ prefix (CRA / some build presets)
-    val = getEnvVar(`REACT_APP_${baseKey}`);
-    if (val) return val;
+  // Try REACT_APP_ prefix (CRA / some build presets)
+  val = getEnvVar(`REACT_APP_${baseKey}`);
+  if (val) return val;
 
-    // Try plain key (System env vars often used in backend or misconfigured frontends)
-    val = getEnvVar(baseKey);
-    if (val) return val;
+  // Try plain key (System env vars often used in backend or misconfigured frontends)
+  val = getEnvVar(baseKey);
+  if (val) return val;
 
-    return undefined;
+  return undefined;
 };
 
 let supabaseInstance: SupabaseClient | null = null;
 
 export const getSupabaseClient = () => {
-    if (supabaseInstance) return supabaseInstance;
+  if (supabaseInstance) return supabaseInstance;
 
-    const SUPABASE_URL = findEnvValue('SUPABASE_URL');
-    const SUPABASE_ANON_KEY = findEnvValue('SUPABASE_ANON_KEY');
+  const SUPABASE_URL = findEnvValue('SUPABASE_URL');
+  const SUPABASE_ANON_KEY = findEnvValue('SUPABASE_ANON_KEY');
 
-    if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
-        console.warn("Supabase Config Missing. Checked VITE_SUPABASE_URL, REACT_APP_SUPABASE_URL, and SUPABASE_URL.");
-    }
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    console.warn("Supabase Config Missing. Checked VITE_SUPABASE_URL, REACT_APP_SUPABASE_URL, and SUPABASE_URL.");
+  }
 
-    // Default to placeholder if missing to prevent crash, but log error
-    const url = SUPABASE_URL || 'https://placeholder.supabase.co';
-    const key = SUPABASE_ANON_KEY || 'placeholder-key';
+  // Default to placeholder if missing to prevent crash, but log error
+  const url = SUPABASE_URL || 'https://placeholder.supabase.co';
+  const key = SUPABASE_ANON_KEY || 'placeholder-key';
 
-    try {
-        supabaseInstance = createClient(url, key);
-    } catch (error) {
-        console.error("Failed to initialize Supabase client:", error);
-        supabaseInstance = createClient('https://placeholder.supabase.co', 'placeholder-key'); 
-    }
-    
-    return supabaseInstance;
+  try {
+    supabaseInstance = createClient(url, key, {
+      auth: {
+        storage: sessionStorage,
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true
+      }
+    });
+  } catch (error) {
+    console.error("Failed to initialize Supabase client:", error);
+    supabaseInstance = createClient('https://placeholder.supabase.co', 'placeholder-key');
+  }
+
+  return supabaseInstance;
 };
 
 export const isSupabaseConfigured = () => {
-    const url = findEnvValue('SUPABASE_URL');
-    const key = findEnvValue('SUPABASE_ANON_KEY');
-    return !!(url && key && url !== 'https://placeholder.supabase.co');
+  const url = findEnvValue('SUPABASE_URL');
+  const key = findEnvValue('SUPABASE_ANON_KEY');
+  return !!(url && key && url !== 'https://placeholder.supabase.co');
 };
