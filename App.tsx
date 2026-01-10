@@ -33,11 +33,27 @@ import {
 } from './services/data';
 import { Member, Interaction, Account, UserRole, Transaction, AccountType, AppSettings, LedgerEntry, AccountStatus, Branch, Notification, MemberGroup } from './types';
 import { Menu, RefreshCw, AlertCircle, WifiOff, Database } from 'lucide-react';
+import { getSupabaseClient } from './services/supabaseClient';
 
 const App: React.FC = () => {
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [currentPage, setCurrentPage] = useState('dashboard');
     const [userRole, setUserRole] = useState<UserRole>('Admin');
+
+    // Check for existing Supabase session
+    useEffect(() => {
+        const checkSession = async () => {
+            const supabase = getSupabaseClient();
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+                const email = session.user.email || '';
+                const role: UserRole = email === 'admin@jeevanatulya.com' ? 'Admin' : 'Staff';
+                setUserRole(role);
+                setIsAuthenticated(true);
+            }
+        };
+        checkSession();
+    }, []);
 
     // Application State
     const [isLoaded, setIsLoaded] = useState(false);
@@ -373,6 +389,8 @@ const App: React.FC = () => {
 
     useEffect(() => {
         const initData = async () => {
+            if (!isAuthenticated) return;
+
             try {
                 const data = await loadData();
                 setMembers(data.members);
@@ -460,7 +478,9 @@ const App: React.FC = () => {
         setIsAuthenticated(true);
     };
 
-    const handleLogout = () => {
+    const handleLogout = async () => {
+        const supabase = getSupabaseClient();
+        await supabase.auth.signOut();
         setIsAuthenticated(false);
         setSelectedMember(null);
         setCurrentPage('dashboard');

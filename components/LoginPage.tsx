@@ -1,27 +1,57 @@
 
 import React, { useState } from 'react';
-import { Shield, User, Key, Lock, AlertCircle } from 'lucide-react';
+import { Shield, User, Key, Lock, AlertCircle, Loader2 } from 'lucide-react';
 import { UserRole } from '../types';
+import { getSupabaseClient } from '../services/supabaseClient';
 
 interface LoginPageProps {
   onLogin: (role: UserRole) => void;
 }
 
+// Map emails to roles
+const EMAIL_ROLE_MAP: Record<string, UserRole> = {
+  'admin@jeevanatulya.com': 'Admin',
+  'staff@jeevanatulya.com': 'Staff'
+};
+
 export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('Admin');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setIsLoading(true);
 
-    if (selectedRole === 'Admin' && password === '1410') {
-      onLogin('Admin');
-    } else if (selectedRole === 'Staff' && password === '1365') {
-      onLogin('Staff');
-    } else {
-      setError('Invalid password. Please try again.');
+    // Determine email based on selected role
+    const email = selectedRole === 'Admin' ? 'admin@jeevanatulya.com' : 'staff@jeevanatulya.com';
+
+    try {
+      const supabase = getSupabaseClient();
+      const { data, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (authError) {
+        console.error('Auth error:', authError);
+        setError('Invalid password. Please try again.');
+        setIsLoading(false);
+        return;
+      }
+
+      if (data.user) {
+        // Derive role from email
+        const role = EMAIL_ROLE_MAP[data.user.email || ''] || 'Staff';
+        onLogin(role);
+      }
+    } catch (err: any) {
+      console.error('Login failed:', err);
+      setError('Connection error. Please check your internet.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -76,20 +106,30 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                   className="w-full pl-10 pr-4 py-3 border border-slate-200 bg-white text-slate-900 rounded-lg focus:ring-2 focus:ring-blue-500 focus:outline-none"
                   placeholder="Enter access code"
                   autoFocus
+                  disabled={isLoading}
                 />
               </div>
             </div>
 
             <button
               type="submit"
-              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
+              disabled={isLoading}
+              className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-bold py-3 rounded-lg transition-colors flex items-center justify-center gap-2"
             >
-              <Key size={18} /> Authenticate
+              {isLoading ? (
+                <>
+                  <Loader2 size={18} className="animate-spin" /> Authenticating...
+                </>
+              ) : (
+                <>
+                  <Key size={18} /> Authenticate
+                </>
+              )}
             </button>
           </form>
 
           <p className="text-center text-xs text-slate-400 mt-8">
-            Unauthorized access is prohibited. <br /> IP Logged: 192.168.1.1
+            Secured by Supabase Auth. <br /> Unauthorized access is prohibited.
           </p>
         </div>
       </div>
