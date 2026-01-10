@@ -1150,175 +1150,265 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         }
     };
 
+    const handlePrintLoanFeeReceipt = (amount: number, description: string) => {
+        const amountInWords = numberToWords(amount);
+        const dateStr = formatDate(new Date().toISOString().split('T')[0]);
+        const numId = member.id.split('-').pop() || member.id;
+
+        const getReceipt = (copyType: string) => `
+            <div class="receipt-box-premium">
+                <div class="watermark">ATULYA</div>
+                <div class="header-top">
+                    <span style="float:left">REG.NO-10954</span>
+                    <span style="float:right">9911770293, 9911773542</span>
+                    <div style="clear:both"></div>
+                </div>
+                <div style="text-align:center; position:relative; margin-top: 2px;">
+                    <span style="font-size:12px; font-weight:bold; letter-spacing: 1px;">LOAN PROCESSING FEE RECEIPT</span>
+                    <span style="position:absolute; right:0; top:2px; font-size:9px;">${copyType}</span>
+                </div>
+                <div style="text-align:center; font-weight:bold; font-size:11px; margin-top:2px;">
+                    JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.
+                </div>
+                <div style="text-align:center; font-size:8px; margin-bottom: 5px;">
+                    E-287/8, PUL PEHLADPUR, DELHI-110044
+                </div>
+
+                <div class="info-grid">
+                    <div class="row">
+                        <div class="cell"></div>
+                        <div class="cell right"><span class="lbl">Rcpt.Date</span>: ${dateStr}</div>
+                    </div>
+                    <div class="row">
+                        <div class="cell"><span class="lbl">Recd. from</span> : <b>${member.fullName.toUpperCase()}</b></div>
+                        <div class="cell right"><span class="lbl">M.No.</span> <b>${numId}</b></div>
+                    </div>
+                    <div class="row">
+                        <div class="cell"><span class="lbl">F/H Name</span> : ${member.fatherName || '-'}</div>
+                    </div>
+                </div>
+
+                <div class="particulars-section">
+                    <div class="p-header"><span>Particulars</span><span style="text-align:right">Amount</span></div>
+                    <div class="p-body">
+                        <div class="p-row">
+                            <span style="font-size: 10px; font-weight: bold;">Loan Processing Fees</span>
+                            <span style="font-weight:bold">${amount.toFixed(2)}</span>
+                        </div>
+                        <div style="font-size: 8px; color: #555; margin-top: 8px; line-height: 1.4;">
+                            ${description.includes('| Breakdown:') ? description.split('| Breakdown:')[1] : description}
+                        </div>
+                    </div>
+                    <div class="p-total" style="text-align:right; font-weight:bold; font-size: 13px; border-top: 1px solid #000; padding: 4px 0;">
+                        Total Receipt: ₹ ${amount.toFixed(2)}
+                    </div>
+                </div>
+
+                <div class="words" style="margin-top: 5px; font-weight:bold; font-size:10px;">
+                    Rupees ${amountInWords} only
+                </div>
+
+                <div class="auth-box" style="margin-top: 15px; text-align:center; font-weight:bold; font-size:9px;">
+                    For JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.
+                </div>
+
+                <div class="footer-bottom">
+                     <div style="font-size: 8px; color: #666; font-weight:bold;">
+                        Payment Mode: Cash
+                    </div>
+                    <div class="sigs">
+                        <div style="border-top:1px solid #000; width:100px; padding-top:2px;">Cashier / Admin</div>
+                    </div>
+                </div>
+                <div style="text-align:center; font-size:9px; margin-top:5px; font-weight:bold;">Have a Nice Day</div>
+            </div>
+        `;
+
+        const htmlContent = `
+            <html>
+              <head>
+                <title>Loan Fee Receipt</title>
+                <style>
+                  @page { size: portrait; margin: 4mm; }
+                  body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; padding: 0; margin: 0; color: #000; }
+                  .page-container { display: flex; flex-direction: row; width: 100%; gap: 6mm; justify-content: space-between; padding: 2mm; box-sizing: border-box; }
+                  .receipt-copy-wrapper { width: 48%; border-right: 1px dashed #ccc; padding-right: 3mm; box-sizing: border-box; }
+                  .receipt-copy-wrapper:last-child { border-right: none; padding-right: 0; padding-left: 3mm; }
+                  
+                  .receipt-box-premium { border: 2px solid #000; padding: 10px; background: #fff; position: relative; min-height: 145mm; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; }
+                  
+                  .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); opacity: 0.04; font-size: 60px; z-index: 0; font-weight: bold; pointer-events: none; }
+                  
+                  .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
+                  .info-grid { margin-top: 5px; position: relative; z-index: 1; }
+                  .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+                  .cell { flex: 1; font-size: 10px; }
+                  .cell.right { text-align: right; }
+                  .lbl { display: inline-block; width: 65px; color: #444; }
+                  
+                  .particulars-section { margin-top: 8px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 5px 0; position: relative; z-index: 1; }
+                  .p-header { display: flex; justify-content: space-between; font-weight: bold; padding-bottom: 4px; border-bottom: 1px solid #eee; text-transform: uppercase; font-size: 9px; }
+                  .p-body { padding: 6px 0; min-height: 60px; }
+                  .p-row { display: flex; justify-content: space-between; line-height: 1.4; font-size: 10px; }
+                  
+                  .footer-bottom { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; padding-top: 10px; }
+                  .sigs { text-align: right; font-weight: bold; font-size: 10px; }
+                </style>
+              </head>
+              <body>
+                <div class="page-container">
+                   <div class="receipt-copy-wrapper">${getReceipt('MEMBER COPY')}</div>
+                   <div class="receipt-copy-wrapper">${getReceipt('OFFICE COPY')}</div>
+                </div>
+              </body>
+            </html>
+        `;
+
+        printViaWindow(htmlContent);
+    };
+
     const generateReceiptHTML = (tx: Transaction, acc: Account, balanceAfter: number, mem: Member) => {
         const dateStr = formatDate(tx.date);
-        let paymentDetails: string = `Pay.Mode: ${tx.paymentMethod || 'Cash'} `;
-        if (tx.paymentMethod === 'Both' && (tx.cashAmount || tx.onlineAmount)) {
-            paymentDetails = `Pay.Mode: Cash(₹${tx.cashAmount || 0}) Online(₹${tx.onlineAmount || 0})`;
-        }
-        if (tx.utrNumber) {
-            paymentDetails += ` UTR:${tx.utrNumber} `;
-        }
-
+        const amountInWords = numberToWords(tx.amount);
         const isRD = acc.type === AccountType.RECURRING_DEPOSIT;
         const isLoan = acc.type === AccountType.LOAN;
+        const numId = mem.id.split('-').pop() || mem.id;
 
-        // Balance summaries for footer
-        const smAcc = accounts.find(a => a.type === AccountType.SHARE_CAPITAL);
-        const cdAcc = accounts.find(a => a.type === AccountType.COMPULSORY_DEPOSIT);
-        const smBal = smAcc ? smAcc.balance : 0;
-        const cdBal = cdAcc ? cdAcc.balance : 0;
-
-        // Recipient Summary (Other accounts)
-        const otherAccs = accounts.filter(a => a.id !== acc.id);
-        const accSummaries = otherAccs.map(a => `${a.accountNumber.split('-').pop()} ${a.balance} ${a.type === AccountType.LOAN ? 'Dr' : 'Cr'} `).join(' ');
+        let paymentDetails: string = tx.paymentMethod || 'Cash';
+        if (tx.paymentMethod === 'Both' && (tx.cashAmount || tx.onlineAmount)) {
+            paymentDetails = `Cash(₹${tx.cashAmount || 0}) Online(₹${tx.onlineAmount || 0})`;
+        }
+        if (tx.utrNumber) {
+            paymentDetails += ` (UTR:${tx.utrNumber})`;
+        }
 
         const getReceipt = (copyType: string) => {
+            const header = `
+                <div class="header-top">
+                    <span style="float:left">REG.NO-10954</span>
+                    <span style="float:right">9911770293, 9911773542</span>
+                    <div style="clear:both"></div>
+                </div>
+                <div style="text-align:center; position:relative; margin-top: 2px;">
+                    <span style="font-size:12px; font-weight:bold; letter-spacing: 1px;">
+                        ${isLoan ? 'LOAN REPAYMENT' : (isRD ? 'RD INSTALLMENT' : 'TRANSACTION')} RECEIPT
+                    </span>
+                    <span style="position:absolute; right:0; top:2px; font-size:9px;">${copyType}</span>
+                </div>
+                <div style="text-align:center; font-weight:bold; font-size:11px; margin-top:2px;">
+                    JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.
+                </div>
+                <div style="text-align:center; font-size:8px; margin-bottom: 5px;">
+                    E-287/8, PUL PEHLADPUR, DELHI-110044
+                </div>
+            `;
+
+            const infoGrid = `
+                <div class="info-grid">
+                    <div class="row">
+                        <div class="cell"></div>
+                        <div class="cell right"><span class="lbl">Rcpt.Date</span>: ${dateStr}</div>
+                    </div>
+                    <div class="row">
+                        <div class="cell"><span class="lbl">Recd. from</span> : <b>${mem.fullName.toUpperCase()}</b></div>
+                        <div class="cell right"><span class="lbl">M.No.</span> <b>${numId}</b></div>
+                    </div>
+                    <div class="row">
+                        <div class="cell"><span class="lbl">F/H Name</span> : ${mem.fatherName || '-'}</div>
+                        <div class="cell right"><span class="lbl">Tx.No.</span> <b>${tx.id.split('-').pop()}</b></div>
+                    </div>
+                    <div class="row">
+                        <div class="cell"><span class="lbl">Pay Mode</span> : ${paymentDetails}</div>
+                    </div>
+                </div>
+            `;
+
+            let particulars = '';
             if (isRD) {
-                // RD/DD Format - Calculate installments paid based on amount
                 const installmentAmount = acc.originalAmount || 0;
-
-                // Calculate total amount paid (all credit transactions)
-                const totalPaid = acc.transactions
-                    .filter(t => t.type === 'credit')
-                    .reduce((sum, t) => sum + t.amount, 0);
-
-                // Calculate number of installments paid
+                const totalPaid = acc.transactions.filter(t => t.type === 'credit').reduce((sum, t) => sum + t.amount, 0);
                 const installmentsPaid = installmentAmount > 0 ? Math.floor(totalPaid / installmentAmount) : 0;
-
                 const freqLabel = acc.rdFrequency === 'Daily' ? 'Days' : 'Months';
                 const countDisplay = `${acc.rdFrequency === 'Daily' ? 'DD' : 'RD'}/${installmentsPaid} ${freqLabel}`;
 
-                return `
-                <div class="receipt-box rd-receipt">
-                    <div class="header">
-                        <div class="reg-no">REG.NO-10954</div>
-                        <div class="org-contact">9911770293, 9911773542</div>
-                        <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
-                        <div class="org-address">E-287/8, PUL PEHLADPUR, DELHI-110044</div>
-                        <div class="receipt-title">RECEIPT <span style="font-size: 8px; font-weight: normal; margin-left: 10px;">${copyType}</span></div>
+                particulars = `
+                    <div class="particulars-section">
+                        <div class="p-header"><span>Particulars</span><span style="text-align:right">Amount</span></div>
+                        <div class="p-body">
+                            <div class="p-row">
+                                <span>${countDisplay} @ ${acc.interestRate || 0}% (A/c: ${acc.accountNumber})</span>
+                                <span style="font-weight:bold">${tx.amount.toFixed(2)}</span>
+                            </div>
+                            <div style="font-size: 8px; color: #555; margin-top: 5px;">Installment Amt: ${installmentAmount.toFixed(0)}</div>
+                        </div>
                     </div>
+                `;
+            } else if (isLoan) {
+                // Parse P and I from description if available (set in submitTransaction)
+                const desc = tx.description || "";
+                const pMatch = desc.match(/P:₹([\d,.]+)/);
+                const iMatch = desc.match(/I:₹([\d,.]+)/);
+                const pAmt = pMatch ? pMatch[1] : null;
+                const iAmt = iMatch ? iMatch[1] : null;
 
-                    <div class="info-grid">
-                        <div class="info-row"><span>Rcpt.Date:</span> : ${dateStr}</div>
-                        <div class="info-row"><span>M.No.</span> : ${mem.id.split('-').pop()}</div>
-                        <div class="info-row"><span>Recd. from</span> : ${mem.fullName.toUpperCase()}</div>
-                        <div class="info-row"><span>Recd. Mode</span> : By ${tx.paymentMethod || 'Cash'}</div>
-                        <div class="info-row"><span>F/H Name</span> : ${mem.fatherName || '-'}</div>
+                particulars = `
+                    <div class="particulars-section">
+                        <div class="p-header"><span>Particulars</span><span style="text-align:right">Amount</span></div>
+                        <div class="p-body">
+                            <div class="p-row">
+                                <span>Loan Repayment (A/c: ${acc.accountNumber})</span>
+                                <span style="font-weight:bold">${tx.amount.toFixed(2)}</span>
+                            </div>
+                            <div style="font-size: 8px; color: #555; margin-top: 5px;">
+                                Loan Type: ${acc.loanType || 'Personal'} 
+                                ${pAmt && iAmt ? `<br/>Breakdown: Principal ₹${pAmt} | Interest ₹${iAmt}` : ''}
+                            </div>
+                        </div>
                     </div>
-
-                    <table class="particulars-table">
-                        <thead>
-                            <tr>
-                                <th>Particulars</th>
-                                <th style="text-align: right;">Amount</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td style="font-size: 9px; line-height: 1.2;">
-                                    ${countDisplay} Rate: ${acc.interestRate || 0}% Dep.Amt: ${acc.originalAmount || 0}<br/>
-                                    A/c No: ${acc.accountNumber}
-                                </td>
-                                <td style="text-align: right; vertical-align: top;">${tx.amount.toFixed(2)}</td>
-                            </tr>
-                            <tr class="total-row">
-                                <td style="text-align: right; border-top: 1px solid #000;">Total</td>
-                                <td style="text-align: right; border-top: 1px solid #000; font-weight: bold;">${tx.amount.toFixed(2)}</td>
-                            </tr>
-                        </tbody>
-                    </table>
-
-                    <div class="amount-words">${numberToWords(tx.amount)} Rupees only</div>
-
-                    <div class="society-name">For JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
-
-                    <div class="signature-block">
-                        <div class="sig-title">Cashier Signature</div>
-                        <div class="sig-title">Administrator</div>
+                `;
+            } else {
+                particulars = `
+                    <div class="particulars-section">
+                        <div class="p-header"><span>Particulars</span><span style="text-align:right">Amount</span></div>
+                        <div class="p-body">
+                            <div class="p-row">
+                                <span style="text-transform: capitalize;">${tx.type === 'credit' ? 'Deposit' : 'Withdrawal'} (${acc.type})</span>
+                                <span style="font-weight:bold">${tx.amount.toFixed(2)}</span>
+                            </div>
+                            <div style="font-size: 8px; color: #555; margin-top: 5px;">A/c: ${acc.accountNumber}</div>
+                        </div>
                     </div>
-
-                    <div class="other-balances" style="display:flex; justify-content:space-between; font-weight:bold;">
-                        <span style="font-size: 8px; color: #000; text-align: center; width: 100%;">
-                            ${accounts
-                        .filter(a => a.type !== AccountType.LOAN && a.status === AccountStatus.ACTIVE)
-                        .map(a => {
-                            let label = a.type === AccountType.SHARE_CAPITAL ? 'SM' :
-                                a.type === AccountType.COMPULSORY_DEPOSIT ? 'CD' :
-                                    a.type === AccountType.RECURRING_DEPOSIT ? (a.rdFrequency === 'Daily' ? 'DD' : 'RD') :
-                                        a.type === AccountType.FIXED_DEPOSIT ? 'FD' :
-                                            a.type === AccountType.OPTIONAL_DEPOSIT ? 'OD' : 'SB';
-                            const bal = a.id === acc.id ? balanceAfter : a.balance;
-                            return `${label}: ₹${bal.toFixed(0)}`;
-                        })
-                        .join(' | ')}
-                        </span>
-                    </div>
-                    <div class="nice-day">Have a Nice Day</div>
-                </div>`;
+                `;
             }
 
-            if (isLoan) {
-                // Loan Receipt Format
-                return `
-                <div class="receipt-box loan-receipt">
-                    <div class="header">
-                        <div class="reg-no">Reg. No.: 10954</div>
-                        <div style="text-align: right; font-size: 8px;">${copyType}</div>
-                        <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
-                        <div class="org-contact">Ph: 9911770293 , 9911773542</div>
-                    </div>
-                    <div class="tx-header">
-                        <h3>LOAN REPAYMENT RECEIPT</h3>
-                    </div>
-                    <div class="row"><span class="label">Date:</span><span class="val">${dateStr}</span></div>
-                    <div class="row"><span class="label">Receipt No:</span><span class="val">${tx.id}</span></div>
-                    <div class="divider"></div>
-                    <div class="row"><span class="label">Member Name:</span><span class="val">${mem.fullName}</span></div>
-                    <div class="row"><span class="label">Loan Account:</span><span class="val">${acc.accountNumber}</span></div>
-                    <div class="row"><span class="label">Loan Type:</span><span class="val">${acc.loanType || 'Personal'}</span></div>
-                    <div class="divider"></div>
-                    <div class="row"><span class="label">Repayment Amount:</span><span class="val" style="font-weight: bold;">${formatCurrency(tx.amount)}</span></div>
-                    <div class="row"><span class="label">Payment Mode:</span><span class="val">${paymentDetails}</span></div>
-                    <div class="divider"></div>
-                    <div class="row"><span class="label">Remaining Principal:</span><span class="val" style="font-weight: bold;">${formatCurrency(balanceAfter)}</span></div>
-                    <div class="footer">
-                        <div class="sig-line">Authorized Signatory</div>
-                    </div>
-                </div>`;
-            }
-
-            // Standard General Format
             return `
-            <div class="receipt-box">
-                <div class="watermark">ATULYA</div>
-                <div class="header">
-                    <div class="reg-no">Reg. No.: 10954</div>
-                    <div style="text-align: right; font-size: 8px;">${copyType}</div>
-                    <div class="org-name">JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.</div>
-                    <div class="org-contact">Ph: 9911770293 , 9911773542</div>
-                </div>
-                <div class="tx-header">
-                    <h3>TRANSACTION RECEIPT</h3>
-                </div>
-                <div class="row"><span class="label">Date:</span><span class="val">${dateStr}</span></div>
-                <div class="row"><span class="label">Receipt No:</span><span class="val">${tx.id}</span></div>
-                <div class="divider"></div>
-                <div class="row"><span class="label">Member Name:</span><span class="val">${mem.fullName}</span></div>
-                <div class="row"><span class="label">Account Number:</span><span class="val">${acc.accountNumber}</span></div>
-                <div class="row"><span class="label">Account Type:</span><span class="val">${acc.type}</span></div>
-                <div class="divider"></div>
-                <div class="row"><span class="label">Tx Type:</span><span class="val" style="text-transform: uppercase;">${tx.type}</span></div>
-                <div class="row"><span class="label">Amount:</span><span class="val" style="font-weight: bold;">${formatCurrency(tx.amount)}</span></div>
-                <div class="row"><span class="label">Method:</span><span class="val" style="font-size: 9px;">${paymentDetails}</span></div>
-                <div class="divider"></div>
-                <div class="row"><span class="label">Available Balance:</span><span class="val" style="font-weight: bold;">${formatCurrency(balanceAfter)}</span></div>
-                <div class="footer">
-                    <div class="sig-line">Authorized Signatory</div>
-                </div>
-                <div style="margin-top: 10px; padding-top: 5px; border-top: 1px solid #ccc; font-size: 8px; font-weight: bold; text-align: center;">
-                    ${accounts
-                    .filter(a => a.type !== AccountType.LOAN && a.status === AccountStatus.ACTIVE)
+                <div class="receipt-box-premium">
+                    <div class="watermark">ATULYA</div>
+                    ${header}
+                    ${infoGrid}
+                    ${particulars}
+                    <div class="p-total" style="text-align:right; font-weight:bold; font-size: 13px; border-top: 1px solid #000; padding: 4px 0;">
+                        Total Receipt: ₹ ${tx.amount.toFixed(2)}
+                    </div>
+                    <div class="words" style="margin-top: 5px; font-weight:bold; font-size:10px;">
+                        Rupees ${amountInWords} only
+                    </div>
+                    
+                    <div class="summary-bar" style="margin-top: 10px; border: 1px solid #ddd; padding: 5px; background: #fafafa; border-radius: 4px;">
+                        <div style="display:flex; justify-content:space-between; font-size: 10px; font-weight:bold;">
+                            <span>Current Balance in ${acc.accountNumber.split('-').pop()}:</span>
+                            <span>₹ ${balanceAfter.toFixed(2)} ${isLoan ? 'Dr' : 'Cr'}</span>
+                        </div>
+                    </div>
+
+                    <div class="auth-box" style="margin-top: 15px; text-align:center; font-weight:bold; font-size:9px;">
+                        For JEEVAN ATULYA CO-OPERATIVE (U) T/C.SOCIETY LTD.
+                    </div>
+
+                    <div class="footer-bottom">
+                         <div style="font-size: 8px; color: #666; font-weight:bold;">
+                            ${accounts
+                    .filter(a => a.status === AccountStatus.ACTIVE)
                     .map(a => {
                         let label = a.type === AccountType.SHARE_CAPITAL ? 'SM' :
                             a.type === AccountType.COMPULSORY_DEPOSIT ? 'CD' :
@@ -1326,11 +1416,17 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                     a.type === AccountType.FIXED_DEPOSIT ? 'FD' :
                                         a.type === AccountType.OPTIONAL_DEPOSIT ? 'OD' : 'SB';
                         const bal = a.id === acc.id ? balanceAfter : a.balance;
-                        return `${label}: ₹${bal.toFixed(0)}`;
+                        return `${label}:₹${bal.toFixed(0)}`;
                     })
                     .join(' | ')}
+                        </div>
+                        <div class="sigs">
+                            <div style="border-top:1px solid #000; width:100px; padding-top:2px;">Cashier / Admin</div>
+                        </div>
+                    </div>
+                    <div style="text-align:center; font-size:9px; margin-top:5px; font-weight:bold;">Have a Nice Day</div>
                 </div>
-            </div>`;
+            `;
         };
 
         return `
@@ -1339,55 +1435,38 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         <title>Receipt ${tx.id}</title>
         <style>
           @page { size: portrait; margin: 4mm; }
-          body { font-family: Arial, sans-serif; font-size: 11px; padding: 0; margin: 0; }
-          .page-container { display: flex; flex-direction: row; width: 100%; gap: 4mm; justify-content: space-between; }
-          .receipt-copy { width: 48%; border-right: 1px dashed #444; padding-right: 2mm; }
-          .receipt-copy:last-child { border-right: none; padding-right: 0; padding-left: 2mm; }
+          body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 10px; padding: 0; margin: 0; color: #000; }
+          .page-container { display: flex; flex-direction: row; width: 100%; gap: 6mm; justify-content: space-between; padding: 2mm; box-sizing: border-box; }
+          .receipt-copy-wrapper { width: 48%; border-right: 1px dashed #ccc; padding-right: 3mm; box-sizing: border-box; }
+          .receipt-copy-wrapper:last-child { border-right: none; padding-right: 0; padding-left: 3mm; }
           
-          .receipt-box { border: 1.5px solid #000; padding: 12px; background: #fff; position: relative; min-height: 115mm; width: 100%; box-sizing: border-box; }
+          .receipt-box-premium { border: 2px solid #000; padding: 10px; background: #fff; position: relative; min-height: 145mm; width: 100%; box-sizing: border-box; display: flex; flex-direction: column; overflow: hidden; }
           
-          /* RD Receipt Styles */
-          .rd-receipt { padding: 10px; font-family: 'Courier New', Courier, monospace; }
-          .rd-receipt .header { border-bottom: 1px solid #000; padding-bottom: 5px; margin-bottom: 8px; }
-          .rd-receipt .reg-no { font-size: 10px; position: static; text-align: left; }
-          .rd-receipt .org-contact { font-size: 10px; text-align: right; margin-top: -12px; }
-          .rd-receipt .org-name { font-size: 11px; margin-top: 5px; border: none; }
-          .rd-receipt .org-address { font-size: 8px; text-align: center; font-weight: bold; margin-bottom: 5px; }
-          .rd-receipt .receipt-title { text-align: center; font-size: 14px; font-weight: bold; text-decoration: underline; margin-top: 5px; }
-          .rd-receipt .info-grid { display: grid; grid-template-cols: 1fr 1fr; gap: 2px 10px; margin-bottom: 8px; font-size: 10px; }
-          .rd-receipt .info-row { display: flex; }
-          .rd-receipt .info-row span { min-width: 65px; }
-          .rd-receipt .particulars-table { width: 100%; border-collapse: collapse; margin-bottom: 5px; font-size: 10px; }
-          .rd-receipt .particulars-table th { border-bottom: 1px solid #000; border-top: 1px solid #000; text-align: left; padding: 2px; }
-          .rd-receipt .particulars-table td { padding: 2px; }
-          .rd-receipt .amount-words { font-size: 9px; font-style: italic; margin-bottom: 15px; border-bottom: 1px solid #000; }
-          .rd-receipt .society-name { font-size: 9px; font-weight: bold; text-align: center; margin-bottom: 20px; }
-          .rd-receipt .signature-block { display: flex; justify-content: flex-end; gap: 40px; margin-bottom: 10px; }
-          .rd-receipt .sig-title { font-size: 10px; font-weight: bold; text-align: center; border-top: 1px solid #000; padding-top: 2px; min-width: 80px; }
-          .rd-receipt .other-balances { font-size: 8px; border-top: 1px solid #000; padding-top: 2px; margin-bottom: 2px; }
-          .rd-receipt .nice-day { text-align: center; font-size: 10px; border-top: 1px solid #000; padding-top: 2px; }
-
-          .header { text-align: center; margin-bottom: 10px; position: relative; }
-          .reg-no { font-size: 9px; position: absolute; top: -5px; left: 0; font-weight: bold; }
-          .org-name { font-size: 12px; font-weight: bold; text-transform: uppercase; margin-top: 10px; }
-          .org-contact { font-size: 9px; margin-top: 2px; font-weight: bold; }
-          .tx-header h3 { text-align: center; margin: 5px 0 10px 0; border-bottom: 1px dashed #ccc; padding-bottom: 5px; font-size: 14px; font-weight: bold; }
-          .row { display: flex; justify-content: space-between; margin-bottom: 4px; }
-          .label { font-weight: bold; color: #555; }
-          .val { text-align: right; max-width: 60%; }
-          .divider { border-top: 1px dashed #ccc; margin: 8px 0; }
-          .footer { text-align: right; margin-top: 20px; font-size: 10px; padding-top: 10px; color: #333; }
-          .sig-line { border-top: 1px solid #ccc; display: inline-block; padding-top: 2px; width: 100px; text-align: center; }
-          .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); opacity: 0.05; font-size: 40px; z-index: 0; font-weight: bold; pointer-events: none; }
+          .watermark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) rotate(-30deg); opacity: 0.04; font-size: 60px; z-index: 0; font-weight: bold; pointer-events: none; }
+          
+          .header-top { font-size: 9px; font-weight: bold; margin-bottom: 2px; }
+          .info-grid { margin-top: 5px; position: relative; z-index: 1; }
+          .row { display: flex; justify-content: space-between; margin-bottom: 3px; }
+          .cell { flex: 1; font-size: 10px; }
+          .cell.right { text-align: right; }
+          .lbl { display: inline-block; width: 65px; color: #444; }
+          
+          .particulars-section { margin-top: 8px; border-top: 2px solid #000; border-bottom: 2px solid #000; padding: 5px 0; position: relative; z-index: 1; }
+          .p-header { display: flex; justify-content: space-between; font-weight: bold; padding-bottom: 4px; border-bottom: 1px solid #eee; text-transform: uppercase; font-size: 9px; }
+          .p-body { padding: 6px 0; min-height: 40px; }
+          .p-row { display: flex; justify-content: space-between; line-height: 1.4; font-size: 10px; }
+          
+          .footer-bottom { display: flex; justify-content: space-between; align-items: flex-end; margin-top: auto; padding-top: 10px; }
+          .sigs { text-align: right; font-weight: bold; font-size: 10px; }
         </style>
       </head>
       <body>
         <div class="page-container">
-           <div class="receipt-copy">
-             ${getReceipt('OFFICE COPY')}
-           </div>
-           <div class="receipt-copy">
+           <div class="receipt-copy-wrapper">
              ${getReceipt('MEMBER COPY')}
+           </div>
+           <div class="receipt-copy-wrapper">
+             ${getReceipt('OFFICE COPY')}
            </div>
         </div>
       </body>
@@ -1777,19 +1856,34 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
         try {
             const openingBalance = parseFloat(accountForm.amount) || 0;
 
-            if (accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY) {
-                const feeAmount = 700;
-                await onAddLedgerEntry({
-                    id: `LDG-FEES-${Date.now()}`,
-                    memberId: member.id,
-                    date: accountForm.openingDate,
-                    description: `Loan Fees (Emergency) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`,
-                    amount: feeAmount,
-                    type: 'Income',
-                    category: 'Loan Processing Fees',
-                    cashAmount: feeAmount,
-                    onlineAmount: 0
-                });
+            if (accountForm.type === AccountType.LOAN) {
+                let feeAmount = 0;
+                let feeDesc = "";
+
+                if (accountForm.loanType === LoanType.EMERGENCY) {
+                    feeAmount = 700;
+                    feeDesc = `Loan Fees (Emergency) - ${member.fullName} | Breakdown: Verification ₹450, File ₹100, Affidavit ₹150`;
+                } else if (accountForm.loanType === LoanType.PERSONAL) {
+                    feeAmount = 2200;
+                    feeDesc = `Loan Fees (Personal) - ${member.fullName} | Breakdown: Processing ₹1500, Verification ₹450, Affidavit ₹150, File ₹100`;
+                }
+
+                if (feeAmount > 0) {
+                    await onAddLedgerEntry({
+                        id: `LDG-FEES-${Date.now()}`,
+                        memberId: member.id,
+                        date: accountForm.openingDate,
+                        description: feeDesc,
+                        amount: feeAmount,
+                        type: 'Income',
+                        category: 'Loan Processing Fees',
+                        cashAmount: feeAmount,
+                        onlineAmount: 0
+                    });
+
+                    // Trigger Fee Receipt Printing
+                    handlePrintLoanFeeReceipt(feeAmount, feeDesc);
+                }
             }
 
             const finalGuarantors: Guarantor[] = [];
@@ -1801,7 +1895,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                 for (const g of finalGuarantors) {
                     if (g.memberId) {
                         // 1. Check if Guarantor has an active loan
-                        const gActiveLoans = allAccounts.filter(a => a.memberId === g.memberId && a.type === AccountType.LOAN && a.status === AccountStatus.ACTIVE);
+                        const gActiveLoans = (allAccounts || []).filter(a => a.memberId === g.memberId && a.type === AccountType.LOAN && a.status === AccountStatus.ACTIVE);
                         if (gActiveLoans.length > 0) {
                             alert(`Guarantor '${g.name}' cannot be selected because they have an active loan.`);
                             setIsSubmittingAccount(false);
@@ -1810,7 +1904,7 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
 
                         // 2. Check if Guarantor is already guaranteeing another active loan
                         // Count how many ACTIVE loans in the system list this member as a guarantor
-                        const existingGuarantees = allAccounts.filter(a =>
+                        const existingGuarantees = (allAccounts || []).filter(a =>
                             a.type === AccountType.LOAN &&
                             a.status === AccountStatus.ACTIVE &&
                             a.guarantors?.some(guar => guar.memberId === g.memberId)
@@ -3185,17 +3279,28 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                             You are about to create a <strong>{accountForm.type}</strong> account for {member.fullName} with an opening balance of <strong>{formatCurrency(parseFloat(accountForm.amount) || 0)}</strong>.
                                         </p>
 
-                                        {accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.EMERGENCY && (
-                                            <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-left mb-6">
-                                                <p className="text-amber-800 font-bold text-xs uppercase mb-1">One-time Processing Fee: ₹700</p>
-                                                <ul className="text-[10px] text-amber-700 space-y-0.5 list-disc pl-4">
-                                                    <li>Verification Charge: ₹450</li>
-                                                    <li>File Charge: ₹100</li>
-                                                    <li>Affidavit Cost: ₹150</li>
-                                                </ul>
-                                            </div>
+                                        {accountForm.type === AccountType.LOAN && (
+                                            accountForm.loanType === LoanType.EMERGENCY ? (
+                                                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-left mb-6">
+                                                    <p className="text-amber-800 font-bold text-xs uppercase mb-1">One-time Processing Fee: ₹700</p>
+                                                    <ul className="text-[10px] text-amber-700 space-y-0.5 list-disc pl-4">
+                                                        <li>Verification Charge: ₹450</li>
+                                                        <li>File Charge: ₹100</li>
+                                                        <li>Affidavit Cost: ₹150</li>
+                                                    </ul>
+                                                </div>
+                                            ) : accountForm.loanType === LoanType.PERSONAL ? (
+                                                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-left mb-6">
+                                                    <p className="text-blue-800 font-bold text-xs uppercase mb-1">One-time Processing Fee: ₹2200</p>
+                                                    <ul className="text-[10px] text-blue-700 space-y-0.5 list-disc pl-4">
+                                                        <li>Processing Charge: ₹1500</li>
+                                                        <li>Verification Charge: ₹450</li>
+                                                        <li>Affidavit Cost: ₹150</li>
+                                                        <li>File Charge: ₹100</li>
+                                                    </ul>
+                                                </div>
+                                            ) : null
                                         )}
-                                        {!(accountForm.type === AccountType.LOAN && accountForm.loanType === LoanType.PERSONAL) && <div className="mb-6"></div>}
                                         <button type="submit" disabled={isSubmittingAccount} className="w-full py-3 bg-green-600 text-white rounded-lg font-bold hover:bg-green-700 shadow-lg disabled:opacity-50">
                                             {isSubmittingAccount ? 'Creating...' : 'Confirm Creation'}
                                         </button>
@@ -3353,8 +3458,28 @@ export const MemberDetail: React.FC<MemberDetailProps> = ({ member, allMembers, 
                                                                 />
                                                             </div>
                                                         </div>
-                                                        <div className="col-span-2 pt-2 text-center">
+                                                        <div className="col-span-2 pt-2 flex flex-col items-center gap-1">
                                                             <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Total Repayment: {formatCurrency(parseFloat(transForm.amount) || 0)}</p>
+                                                            {acc && acc.emi && (
+                                                                <div className="flex gap-2 mt-1">
+                                                                    <button
+                                                                        type="button"
+                                                                        onClick={() => {
+                                                                            const suggestedInt = Math.round(acc.balance * ((acc.interestRate || 0) / 1200));
+                                                                            const suggestedPri = Math.max(0, acc.emi! - suggestedInt);
+                                                                            setTransForm({
+                                                                                ...transForm,
+                                                                                principalAmount: suggestedPri.toString(),
+                                                                                interestAmount: suggestedInt.toString(),
+                                                                                amount: (suggestedPri + suggestedInt).toString()
+                                                                            });
+                                                                        }}
+                                                                        className="text-[9px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded border border-blue-100 font-bold hover:bg-blue-100 transition-colors"
+                                                                    >
+                                                                        Apply EMI Suggestion (₹{acc.emi})
+                                                                    </button>
+                                                                </div>
+                                                            )}
                                                         </div>
                                                     </div>
                                                 );

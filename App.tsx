@@ -598,7 +598,7 @@ const App: React.FC = () => {
                         utrNumber: utr
                     };
                     await upsertLedgerEntry(incomeEntry);
-                    setLedger(prev => [incomeEntry, ...prev]);
+                    setLedger(prev => prev.some(l => l.id === incomeEntry.id) ? prev : [incomeEntry, ...prev]);
                 }
 
                 // 2. Deposits Flow (CD/SM)
@@ -616,13 +616,17 @@ const App: React.FC = () => {
                         utrNumber: utr
                     };
                     await upsertLedgerEntry(depositEntry);
-                    setLedger(prev => [depositEntry, ...prev]);
+                    setLedger(prev => prev.some(l => l.id === depositEntry.id) ? prev : [depositEntry, ...prev]);
                 }
             }
 
-            // Success: Update main state
-            setMembers(prev => [newMember, ...prev]);
-            setAccounts(prev => [...newAccounts, ...prev]);
+            // Success: Update main state with deduplication
+            setMembers(prev => prev.some(m => m.id === newMember.id) ? prev : [newMember, ...prev]);
+            setAccounts(prev => {
+                const existingIds = new Set(prev.map(a => a.id));
+                const filteredNew = newAccounts.filter(a => !existingIds.has(a.id));
+                return [...filteredNew, ...prev];
+            });
 
 
             if (shouldNavigate) setCurrentPage('members');
@@ -699,11 +703,11 @@ const App: React.FC = () => {
                     utrNumber: accountData.utrNumber
                 };
                 await upsertLedgerEntry(ledgerEntry);
-                setLedger(prev => [ledgerEntry, ...prev]);
+                setLedger(prev => prev.some(l => l.id === ledgerEntry.id) ? prev : [ledgerEntry, ...prev]);
             }
 
-            // Success: Update state
-            setAccounts(prev => [newAccount, ...prev]);
+            // Success: Update state with deduplication
+            setAccounts(prev => prev.some(a => a.id === newAccount.id) ? prev : [newAccount, ...prev]);
 
             // SMS Trigger: New Account
             const member = members.find(m => m.id === memberId);
@@ -780,7 +784,9 @@ const App: React.FC = () => {
         const updatedAccount: Account = {
             ...account,
             balance: newBalance,
-            transactions: [newTransaction, ...account.transactions]
+            transactions: account.transactions.some(t => t.id === newTransaction.id)
+                ? account.transactions
+                : [newTransaction, ...account.transactions]
         };
 
         const newLedgerEntry: LedgerEntry = {
@@ -809,7 +815,7 @@ const App: React.FC = () => {
             setAccounts(prevAccounts => prevAccounts.map(acc =>
                 acc.id === accountId ? updatedAccount : acc
             ));
-            setLedger(prev => [newLedgerEntry, ...prev]);
+            setLedger(prev => prev.some(l => l.id === newLedgerEntry.id) ? prev : [newLedgerEntry, ...prev]);
 
             // SMS Trigger: Deposit/Withdrawal
             const member = members.find(m => m.id === account.memberId);
@@ -836,7 +842,7 @@ const App: React.FC = () => {
     const handleAddLedgerEntry = async (entry: LedgerEntry) => {
         try {
             await upsertLedgerEntry(entry);
-            setLedger([entry, ...ledger]);
+            setLedger(prev => prev.some(l => l.id === entry.id) ? prev : [entry, ...ledger]);
         } catch (e) {
             console.error("Ledger save failed", e);
             if (sessionStorage.getItem('offline_mode') !== 'true') {
